@@ -1,0 +1,37 @@
+# Compiled binaries
+/peerbeam
+/dist/
+/build/
+/bin/
+*.exe
+*.exe~
+
+# Go test and coverage artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# cgo / native shim build artifacts (Bluetooth + share sheet)
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Go workspace files (keep go.mod and go.sum tracked)
+go.work
+go.work.sum
+
+# Dependency vendoring (not used; uncomment if vendoring is adopted)
+# /vendor/
+
+# Local runtime state, if ever placed inside the repo during development
+.peerbeam/
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
