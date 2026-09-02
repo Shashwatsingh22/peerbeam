@@ -317,12 +317,12 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 36: Nothing is processed before the handshake completes**
     - **Validates: Requirements 10.8, 10.9, 11.5**
 
-- [ ] 15. Implement reporting and visibility (report core)
-  - [ ] 15.1 Implement event, failure, status, and transport-change types
+- [x] 15. Implement reporting and visibility (report core)
+  - [x] 15.1 Implement event, failure, status, and transport-change types
     - Create `internal/core/report/evententry.go` (`EventType`, `EventEntry` with no content field, `MessageTrace` limited to type/sequence/length), `internal/core/report/failure.go`, `internal/core/report/statusline.go` with the all-or-nothing `BuildStatusLine` returning the tagged `StatusLine`, and `TransportChangeReason`
     - _Requirements: 10.6, 13.1, 13.2, 13.3, 13.5_
 
-  - [ ] 15.2 Implement the `Describe` error-to-failure mapping and degraded/stall detection
+  - [x] 15.2 Implement the `Describe` error-to-failure mapping and degraded/stall detection
     - Create `internal/core/report/describe.go`: a `switch` over the closed set of `AppError` kinds mapping every variant to a `Failure` with a non-empty operation, peer, reason, and remediation, with a `default` panic under test plus an `exhaustive` linter check; a transport connection failure names each attempted transport in order and a switch names both transports; other sessions untouched
     - Create `internal/core/report/failure.go` (or a `detectors.go`) with degraded-throughput and stall detection over a 10-second window of per-second samples / acknowledged byte counts, continuing the transfer and keeping the session active
     - _Requirements: 2.5, 2.9, 11.8, 11.9, 13.4, 13.6, 13.7_
@@ -331,31 +331,31 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 31: The trust store persists faithfully, holds one entry per fingerprint, and never loses a key silently**
     - **Validates: Requirements 9.4, 9.9, 9.10, 9.11**
 
-  - [ ]* 15.4 Write property test for secret-free logs and reports
+  - [x]* 15.4 Write property test for secret-free logs and reports
     - **Property 37: Logs and reports never contain secrets**
     - **Validates: Requirements 10.6, 13.5**
 
-  - [ ]* 15.5 Write property test for degraded/stall detection
+  - [x]* 15.5 Write property test for degraded/stall detection
     - **Property 38: A continuous below-target window is detected exactly**
     - **Validates: Requirements 11.8, 11.9, 13.6**
 
-  - [ ]* 15.6 Write property test for all-or-nothing status rendering
+  - [x]* 15.6 Write property test for all-or-nothing status rendering
     - **Property 39: Session status is rendered all-or-nothing**
     - **Validates: Requirements 13.1, 13.2**
 
-  - [ ]* 15.7 Write property test for complete failure reports
+  - [x]* 15.7 Write property test for complete failure reports
     - **Property 40: Every failure report is complete and harms no other Session**
     - **Validates: Requirements 2.5, 2.9, 13.4, 13.7**
 
-  - [ ]* 15.8 Write property test for the closed set of transport-change reasons
+  - [x]* 15.8 Write property test for the closed set of transport-change reasons
     - **Property 41: A Transport change is reported with a closed set of reasons**
     - **Validates: Requirements 13.3**
 
-  - [ ]* 15.9 Write property test for transport-change session identity preservation
+  - [x]* 15.9 Write property test for transport-change session identity preservation
     - **Property 15: A Transport change preserves Session identity**
     - **Validates: Requirements 2.9, 3.4, 10.4**
 
-- [ ] 16. Checkpoint - the entire `internal/core` is complete and property-tested
+- [x] 16. Checkpoint - the entire `internal/core` is complete and property-tested
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 17. Implement the LAN platform adapter

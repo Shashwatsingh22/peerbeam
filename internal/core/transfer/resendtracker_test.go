@@ -100,6 +100,11 @@ func TestProperty29TransferTerminationStopsChunkSendingAndPreservesResumableStat
 				if wasStopped {
 					continue
 				}
+				// An acknowledged chunk has its resend counter cleared, so a later
+				// timeout on the same offset starts from attempt 1 again. That is the
+				// point of clearing: a chunk that arrived once and is retransmitted
+				// later has not used up its five attempts.
+				delete(attempts, e.ref.ByteOffset)
 
 			case "timeout":
 				before := attempts[e.ref.ByteOffset]
