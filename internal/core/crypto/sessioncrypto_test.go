@@ -77,17 +77,26 @@ func TestProperty35SealedPayloadsRoundTripLeakNoPlaintextAndRejectEveryTamper(t 
 			rt.Fatalf("sealed %d bytes into %d, want %d",
 				len(plaintext), len(ciphertext), SealedSize(len(plaintext)))
 		}
-		// No plaintext passthrough: the payload does not simply begin with the
-		// plaintext. This check is meaningful at any length.
-		if len(plaintext) > 0 && bytes.Equal(ciphertext[:len(plaintext)], plaintext) {
-			rt.Fatal("the frame payload begins with the plaintext")
-		}
-		// A substring search only says something once the plaintext is long enough that
-		// a coincidental match is negligible. At one or two bytes it is not: a given
-		// byte turns up in seventeen random bytes about seven percent of the time, so
-		// asserting absence there would fail on correct output.
-		if len(plaintext) >= 8 && bytes.Contains(ciphertext, plaintext) {
-			rt.Fatal("the plaintext appears verbatim in the frame payload")
+		// Req 10.2: no payload byte appears in the frame payload field in plaintext.
+		//
+		// Both checks below are gated on a minimum length, and the reason is worth
+		// stating because it caught two bad assertions before this one. ChaCha20 is a
+		// stream cipher: ciphertext is plaintext XOR keystream, so any *individual* byte
+		// coincides with its plaintext byte one time in 256, and any given byte value
+		// turns up somewhere in seventeen bytes of ciphertext about seven percent of the
+		// time. An assertion over one or two bytes therefore fails against correct
+		// output. At eight bytes the odds of a coincidental match are under one in 10^19,
+		// which is the point at which absence means something.
+		//
+		// What holds at every length is the round trip and the exact 16-byte overhead,
+		// both asserted above and below.
+		if len(plaintext) >= 8 {
+			if bytes.Equal(ciphertext[:len(plaintext)], plaintext) {
+				rt.Fatal("the frame payload begins with the plaintext")
+			}
+			if bytes.Contains(ciphertext, plaintext) {
+				rt.Fatal("the plaintext appears verbatim in the frame payload")
+			}
 		}
 
 		// Round trip.

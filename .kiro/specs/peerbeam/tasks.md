@@ -358,16 +358,16 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
 - [x] 16. Checkpoint - the entire `internal/core` is complete and property-tested
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 17. Implement the LAN platform adapter
-  - [ ] 17.1 Implement `LanTransport` over the `net` package
+- [x] 17. Implement the LAN platform adapter
+  - [x] 17.1 Implement `LanTransport` over the `net` package
     - Create `internal/platform/lan/transport.go` implementing `Transport`/`TransportConnection` with `net.TCPConn`/`net.TCPListener`, LAN goodput, and the 64 KiB chunk size
     - _Requirements: 2.1, 7.10_
 
-  - [ ] 17.2 Implement the UDP multicast beacon
+  - [x] 17.2 Implement the UDP multicast beacon
     - Create `internal/platform/lan/beacon.go`: a `net.UDPConn` joined to `239.255.41.7:45771` via `net.ListenMulticastUDP` on every up interface, publish once at startup and every 5 s via a `time.Ticker`, feed received datagrams through `CheckAnnouncement` into `PeerRegistry`, and sweep expiry every 2 s
     - _Requirements: 1.1, 1.3, 1.9_
 
-  - [ ]* 17.3 Write integration test for LAN discovery latency
+  - [x]* 17.3 Write integration test for LAN discovery latency
     - Two in-process nodes over a `LoopbackLanTransport` reach each other's visible peer list within the discovery window, under standard `go test`
     - _Requirements: 1.3_
 
