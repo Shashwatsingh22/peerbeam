@@ -29,7 +29,7 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
   - _Requirements: 12.2, 12.6, 12.7_
 
 - [ ] 2. Implement the wire codec (Message_Codec)
-  - [ ] 2.1 Implement `Frame`, `MessageType`, and codec constants
+  - [x] 2.1 Implement `Frame`, `MessageType`, and codec constants
     - Create `internal/core/codec/frame.go` with the `Frame` struct (ProtocolVersion uint8, Type uint8, Sequence uint64, Payload []byte) and an `Equal` method using `bytes.Equal`
     - Create `internal/core/codec/messagetype.go` with the `MessageType` typed constants and `MessageTypeFromCode` returning `(MessageType, bool)`
     - Define `ProtocolVersion`, `HeaderBytes = 14`, `MaxPayloadBytes = 1_048_576`
