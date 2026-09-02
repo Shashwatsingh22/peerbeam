@@ -294,26 +294,26 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 33: Session admission accepts only trusted, byte-identical keys**
     - **Validates: Requirements 9.2, 9.6, 9.7, 9.8, 9.11**
 
-- [ ] 14. Implement session crypto (SessionCrypto core)
-  - [ ] 14.1 Implement HKDF and the authenticated handshake
+- [x] 14. Implement session crypto (SessionCrypto core)
+  - [x] 14.1 Implement HKDF and the authenticated handshake
     - Create `internal/core/crypto/hkdf.go` (HKDF-SHA256 over `crypto/hmac` + `crypto/sha256`, or `golang.org/x/crypto/hkdf`) and `internal/core/crypto/handshake.go`
     - Generate ephemeral X25519 keys with `golang.org/x/crypto/curve25519`, exchange fingerprint + ephemeral public key + Ed25519 signature (`crypto/ed25519`) over the fixed transcript, verify the signature and the stored long-term key, run ECDH, and derive two directional `SessionKeys` per session (fresh, never reused)
     - _Requirements: 10.1, 10.5_
 
-  - [ ] 14.2 Implement `SessionCrypto` seal/open with derived nonces
+  - [x] 14.2 Implement `SessionCrypto` seal/open with derived nonces
     - Create `internal/core/crypto/sessioncrypto.go`: ChaCha20-Poly1305 (`golang.org/x/crypto/chacha20poly1305`) with the frame header as AAD and a 12-byte nonce derived from direction byte + sequence
     - `Seal` produces ciphertext with the 16-byte tag; `Open` returns `(nil, false)` on tag failure so the caller discards the message, closes the session, reports an authentication failure, and leaves sequence state unchanged; nothing but key-exchange types is processed pre-handshake, and a handshake past its 5 s deadline abandons establishment leaving no session
     - _Requirements: 10.2, 10.3, 10.4, 10.7, 10.8, 10.9, 11.5_
 
-  - [ ]* 14.3 Write property test for the handshake key binding
+  - [x]* 14.3 Write property test for the handshake key binding
     - **Property 34: The handshake binds Session keys to both long-term keys and produces fresh keys**
     - **Validates: Requirements 10.1, 10.5**
 
-  - [ ]* 14.4 Write property test for sealed payloads
+  - [x]* 14.4 Write property test for sealed payloads
     - **Property 35: Sealed payloads round trip, leak no plaintext, and reject every tamper**
     - **Validates: Requirements 10.2, 10.3, 10.7**
 
-  - [ ]* 14.5 Write property test for pre-handshake gating
+  - [x]* 14.5 Write property test for pre-handshake gating
     - **Property 36: Nothing is processed before the handshake completes**
     - **Validates: Requirements 10.8, 10.9, 11.5**
 

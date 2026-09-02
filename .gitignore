@@ -11,6 +11,9 @@
 *.out
 coverage.txt
 coverage.html
+# rapid writes a reproducer file next to a failing property test. Useful locally while
+# fixing the failure, meaningless once it is fixed.
+testdata/rapid/
 
 # cgo / native shim build artifacts (Bluetooth + share sheet)
 *.o

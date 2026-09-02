@@ -2,9 +2,9 @@ package trust
 
 import (
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+
+	"github.com/peerbeam/peerbeam/internal/core/crypto"
 )
 
 // FingerprintHexChars is the length of a fingerprint in lowercase hex: SHA-256 is 32
@@ -22,10 +22,11 @@ const PublicKeyBytes = ed25519.PublicKeySize
 // string in the trust store and the peer registry, so an uppercase and a lowercase
 // spelling of the same key would produce two entries for one peer, and Req 9.4's "one
 // entry per public key fingerprint" would quietly stop holding.
-func Fingerprint(publicKey []byte) string {
-	sum := sha256.Sum256(publicKey)
-	return hex.EncodeToString(sum[:])
-}
+//
+// The derivation lives in internal/core/crypto, which the handshake also uses to check a
+// claimed fingerprint against a presented key. One definition means the two cannot drift
+// apart on casing or hash choice.
+func Fingerprint(publicKey []byte) string { return crypto.Fingerprint(publicKey) }
 
 // IsFingerprint reports whether s is a well-formed fingerprint: exactly 64 lowercase
 // hex characters. Uppercase is rejected rather than normalised, so a caller that built
