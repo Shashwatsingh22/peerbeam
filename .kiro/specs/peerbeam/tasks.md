@@ -271,26 +271,26 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Progress report carries transfer id, acknowledged bytes, total size, and goodput; integrity failure with an undeletable file reports the retained location
     - _Requirements: 7.3, 7.6_
 
-- [ ] 13. Implement trust model and verification code (trust core)
-  - [ ] 13.1 Implement `TrustedPeer`, fingerprint, and `VerificationCode`
+- [x] 13. Implement trust model and verification code (trust core)
+  - [x] 13.1 Implement `TrustedPeer`, fingerprint, and `VerificationCode`
     - Create `internal/core/trust/trustmodel.go` (`TrustedPeer` struct and the `KeyStore`/`TrustStore` interfaces) and `internal/core/trust/fingerprint.go`
     - Create `internal/core/crypto/verificationcode.go`: exactly 6 decimal digits (with leading zeros) derived from both public keys sorted with `bytes.Compare` so both nodes compute the same code, valid for `VerificationCodeValidity = 120s`
     - _Requirements: 9.3, 9.4_
 
-  - [ ] 13.2 Implement pairing outcome and session admission logic over the trust model
+  - [x] 13.2 Implement pairing outcome and session admission logic over the trust model
     - Implement pairing success/failure: add both keys on mutual confirmation within 120 s keeping one entry per fingerprint; on mismatch or timeout discard the received key, add nothing, leave existing entries unchanged, and name the affected peer
     - Implement admission decisions: admit only trusted, byte-identical keys; reject untrusted peers with a pairing prompt and no payload delivery; reject a differing key as a mismatch leaving the stored key unchanged; removing a peer closes its session and rejects future requests; while key/trust store is failed, reject every request naming the failing step
     - _Requirements: 9.2, 9.5, 9.6, 9.7, 9.8, 9.11_
 
-  - [ ]* 13.3 Write property test for the verification code
+  - [x]* 13.3 Write property test for the verification code
     - **Property 30: The verification code is symmetric, deterministic, and exactly 6 digits**
     - **Validates: Requirements 9.3**
 
-  - [ ]* 13.4 Write property test for failed pairing
+  - [x]* 13.4 Write property test for failed pairing
     - **Property 32: Failed pairing changes nothing**
     - **Validates: Requirements 9.5**
 
-  - [ ]* 13.5 Write property test for session admission
+  - [x]* 13.5 Write property test for session admission
     - **Property 33: Session admission accepts only trusted, byte-identical keys**
     - **Validates: Requirements 9.2, 9.6, 9.7, 9.8, 9.11**
 
