@@ -242,32 +242,32 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
 - [x] 11. Checkpoint - session, text, and clipboard logic complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Implement transfer chunk planning and progress (Transfer_Service core)
-  - [ ] 12.1 Implement `PlanChunks`, `ChunkRef`, `TransferOffer`, and `TransferId`
+- [x] 12. Implement transfer chunk planning and progress (Transfer_Service core)
+  - [x] 12.1 Implement `PlanChunks`, `ChunkRef`, `TransferOffer`, and `TransferId`
     - Create `internal/core/transfer/chunkplanner.go`: slice `[fromOffset, fileSize)` into ascending chunks with absolute byte offsets, indices 0..n-1, a consistent total, and only a final short chunk; usable for first leg, resume, and re-slice at a new chunk size
     - Create `internal/core/transfer/transferstate.go` for `TransferOffer` (TransferId, FileName, ByteSize, SHA256) and the file-size constants (`FileMinBytes = 1`, `FileMaxBytes = 64 GiB`)
     - _Requirements: 7.1, 7.2, 7.8, 7.10, 3.5_
 
-  - [ ] 12.2 Implement `TransferProgress` and `ResendTracker`
+  - [x] 12.2 Implement `TransferProgress` and `ResendTracker`
     - Create `internal/core/transfer/transferstate.go` additions for `TransferProgress`: merged acknowledged offset ranges, `ContiguousAckedThrough`, `AcknowledgedBytes`, `OnAck`
     - Create `internal/core/transfer/resendtracker.go`: per-chunk resend counters via `RegisterResend` returning `(attempt, ok)`, at most `MaxResendAttempts = 5`, stopping a transfer after exhaustion naming the transfer id and chunk index and retaining resumable state for 10 min
     - Implement integrity check: compute SHA-256 of assembled content with `crypto/sha256` and compare to the offer; on mismatch report both digests and discard, or report the retained location if it cannot be discarded
     - Implement offer/cancel outcomes: no chunk sent for a declined offer, a 60 s offer timeout, or a file size out of range (naming measured size and range); cancel stops chunks and instructs the receiver to release partial content
     - _Requirements: 7.3, 7.4, 7.5, 7.6, 7.7, 7.9, 7.11, 7.12, 7.13_
 
-  - [ ]* 12.3 Write property test for the chunk plan
+  - [x]* 12.3 Write property test for the chunk plan
     - **Property 27: The chunk plan covers a file exactly once and reassembles to the original bytes**
     - **Validates: Requirements 7.1, 7.2, 7.4, 7.8, 7.10, 3.5**
 
-  - [ ]* 12.4 Write property test for corrupted-transfer detection
+  - [x]* 12.4 Write property test for corrupted-transfer detection
     - **Property 28: Corrupted transfers are always caught and the content is released**
     - **Validates: Requirements 7.5, 7.6**
 
-  - [ ]* 12.5 Write property test for transfer termination and resumable state
+  - [x]* 12.5 Write property test for transfer termination and resumable state
     - **Property 29: Transfer termination stops Chunk sending and preserves resumable state**
     - **Validates: Requirements 7.7, 7.9, 7.11, 7.12, 7.13**
 
-  - [ ]* 12.6 Write unit tests for progress report shape and undeletable-file integrity failure
+  - [x]* 12.6 Write unit tests for progress report shape and undeletable-file integrity failure
     - Progress report carries transfer id, acknowledged bytes, total size, and goodput; integrity failure with an undeletable file reports the retained location
     - _Requirements: 7.3, 7.6_
 
