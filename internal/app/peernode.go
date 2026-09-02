@@ -411,15 +411,12 @@ func (n *PeerNode) expiryLoop(ctx context.Context) {
 	}
 }
 
-// onInbound handles a connection a Transport accepted.
+// onInbound handles a connection a Transport accepted (Req 10.1, 10.8, 10.9).
 //
-// The handshake has not happened yet, so nothing is admitted here: the connection gets a
-// HandshakeGate and is closed if it sends anything but key exchange traffic (Req 10.9) or takes
-// longer than five seconds (Req 10.8). Session admission happens once the peer's identity is
-// verified, which is the only point at which the trust store can be consulted.
+// It runs the responder half of the handshake and either admits a Session or closes the connection
+// with a report. Nothing is admitted before the exchange completes, which is what Req 10.9 requires
+// and what AcceptInbound enforces through the handshake gate.
 func (n *PeerNode) onInbound(conn transport.TransportConnection) {
-	gate := crypto.NewHandshakeGate(n.clk.Now())
-
 	// A node whose trust store failed cannot decide anything about this peer, so it closes the
 	// connection rather than holding it open (Req 9.11).
 	if failure := n.pairing.StoreFailure(); failure != nil {
@@ -431,66 +428,18 @@ func (n *PeerNode) onInbound(conn transport.TransportConnection) {
 	n.wg.Add(1)
 	go func() {
 		defer n.wg.Done()
-		defer func() { _ = conn.Close() }()
 
-		// Until the handshake completes there is no Session and no keys, so the reader here
-		// only enforces the gate. The full per-Session reader starts once a Session exists.
-		reader := codec.NewFrameReader(n.clk)
-		buffer := make([]byte, 4096)
-
-		for {
-			if n.ctx.Err() != nil {
-				return
-			}
-			if failure, expired := gate.Expired(n.clk.Now()); expired {
-				// Req 10.8: abandon establishment, leave no Session behind.
-				n.reportFailure(&report.HandshakeFailed{
-					Step:               failure.Step,
-					AttemptedTransport: conn.TransportName(),
-					Reason:             failure.Reason,
-				}, report.UnknownPeer)
-				return
-			}
-
-			read, err := conn.Read(buffer)
-			if err != nil {
-				return
-			}
-			result := reader.Push(buffer[:read])
-			if result.Err != nil {
-				n.reportCodecError(result.Err, report.UnknownPeer)
-				return
-			}
-			for _, frame := range result.Frames {
-				kind, known := codec.MessageTypeFromCode(frame.Type)
-				isKeyExchange := known &&
-					(kind == codec.MsgKeyExchangeInit || kind == codec.MsgKeyExchangeResponse)
-
-				decision := gate.Admit(frame.Type, isKeyExchange, report.UnknownPeer, n.clk.Now())
-				switch {
-				case decision.Violation != nil:
-					// Req 10.9: discard without parsing the payload, close, report.
-					n.reportFailure(&report.ProtocolViolation{
-						MessageType: decision.Violation.MessageType,
-						Reason:      decision.Violation.Reason,
-					}, report.UnknownPeer)
-					return
-				case decision.Expired != nil:
-					n.reportFailure(&report.HandshakeFailed{
-						Step:               decision.Expired.Step,
-						AttemptedTransport: conn.TransportName(),
-						Reason:             decision.Expired.Reason,
-					}, report.UnknownPeer)
-					return
-				}
-				// A complete inbound handshake needs the responder half of
-				// crypto.CompleteHandshake plus the peer's key from the trust store. The
-				// exchange itself is implemented and tested in internal/core/crypto;
-				// wiring the two halves onto a live connection is the remaining step,
-				// and it is called out in the task 22 notes rather than half-done here.
-				return
-			}
+		// The handshake carries its own 5-second deadline (Req 10.8); the root context is
+		// what stops it if the node is shutting down.
+		result, failure := n.AcceptInbound(n.ctx, conn)
+		if failure != nil {
+			// AcceptInbound closed the connection already. Reporting is all that is left,
+			// and it goes through the same Describe mapping as every other failure.
+			n.reportFailure(failure, report.UnknownPeer)
+			return
 		}
+		n.reportTransportChange(result.Session, "", result.Transport.Name(),
+			report.ReasonHigherRankedAvailable)
 	}()
 }
 
@@ -750,8 +699,7 @@ func (n *PeerNode) StatusLines() []report.StatusLine {
 			name := s.DisplayName
 			peerName = &name
 		}
-		if s.ActiveTransportName != "" {
-			active := s.ActiveTransportName
+		if active := s.ActiveTransportName(); active != "" {
 			transportName = &active
 		}
 

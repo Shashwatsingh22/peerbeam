@@ -364,28 +364,16 @@ func newConnectCommand(open nodeOpener) *cobra.Command {
 			}
 
 			// Req 2.1: candidates are the enabled Transports whose medium the peer is
-			// visible on, ranked fastest first.
-			media := node.Registry().MediaFor(fingerprint)
-			ranked := transport.RankFor(node.UsableTransports(), media)
-			if len(ranked) == 0 {
-				return reportError(cmd, node, &report.NoCandidateTransport{})
+			// visible on, ranked fastest first. Connect walks the ladder, completes the
+			// authenticated key exchange, and admits the Session.
+			result, connectFailure := node.Connect(cmd.Context(), fingerprint)
+			if connectFailure != nil {
+				return reportError(cmd, node, connectFailure)
 			}
-
-			names := make([]string, 0, len(ranked))
-			for _, t := range ranked {
-				names = append(names, t.Name())
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "transport order for %s: %s\n",
-				shortFingerprint(fingerprint), strings.Join(names, " then "))
-
-			// The ladder, the handshake, and Session admission are implemented and tested
-			// in internal/core; joining them onto a live connection is the step called out
-			// in the task 22 notes.
-			return reportError(cmd, node, &report.HandshakeFailed{
-				Step:               "connect",
-				AttemptedTransport: ranked[0].Name(),
-				Reason:             "the session establishment path is not wired to a live connection yet",
-			})
+			fmt.Fprintf(cmd.OutOrStdout(), "connected to %s on %s as session %s\n",
+				result.Session.DisplayName, result.Transport.Name(),
+				shortId(result.Session.Id.String()))
+			return nil
 		},
 	}
 }
@@ -739,7 +727,7 @@ func newFileCommand(open nodeOpener) *cobra.Command {
 
 			chunkSize := transport.LANChunkBytes
 			if s := node.Sessions().FindActive(args[0]); s != nil &&
-				s.ActiveTransportName == transport.NameBT {
+				s.ActiveTransportName() == transport.NameBT {
 				chunkSize = transport.BTChunkBytes
 			}
 			plan, planErr := transfer.PlanChunks(info.Size(), 0, chunkSize)

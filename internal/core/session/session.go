@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"fmt"
+	"sync"
 
 	"github.com/peerbeam/peerbeam/internal/core/clock"
 )
@@ -79,8 +80,17 @@ type Message struct {
 // without touching any other, and the only shared state in the package is the
 // registry map, which is touched on admit and close and never on the message path.
 //
-// A Session is not safe for concurrent mutation. One owning goroutine per Session
-// drives it, which is how the design avoids a lock on the hot path.
+// The binding fields - lifecycle state and active Transport name - are guarded by a
+// mutex, because they are the one part of a Session that two goroutines genuinely
+// touch: the Session's own goroutine rebinds or disconnects it, while another
+// goroutine asks the registry to find the active Session for a Peer. Everything
+// else is owned by the Session's goroutine and needs no lock, which is what keeps
+// the message path lock-free.
+//
+// An earlier version left these two fields unguarded on the grounds that one
+// goroutine drives a Session. That was wrong, and the race detector found it:
+// SessionRegistry.FindActive reads the state under the *registry* mutex while a
+// rebind writes it under nothing, so the two contracts contradicted each other.
 type Session struct {
 	// Id is fixed for the life of the Session and survives every Transport
 	// change (Req 3.4).
@@ -90,9 +100,6 @@ type Session struct {
 	// Sequence is this Session's own outbound counter and inbound duplicate set
 	// (Req 4.1, 5.1, 5.10).
 	Sequence *SequenceTracker
-	// ActiveTransportName is the Transport the Session is bound to right now. It
-	// changes on a rebind while everything else above stays put (Req 3.4).
-	ActiveTransportName string
 
 	// Peer identity. Fingerprint is the key the registry indexes on; DisplayName
 	// is what a report shows (Req 4.5, 4.7 both name the Peer).
@@ -109,7 +116,12 @@ type Session struct {
 	// (Req 3.6, 3.7, 3.9, 3.10).
 	Queue *OutboundQueue
 
+	// mu guards state and activeTransportName, and nothing else.
+	mu    sync.RWMutex
 	state State
+	// activeTransportName is the Transport the Session is bound to right now. It
+	// changes on a rebind while everything else above stays put (Req 3.4).
+	activeTransportName string
 }
 
 // newSession builds an active Session with its own channels, sequence state, and
@@ -131,53 +143,82 @@ func newSession(id SessionId, fingerprint, displayName string, keys KeyMaterial,
 }
 
 // State reports the Session's lifecycle state.
-func (s *Session) State() State { return s.state }
+func (s *Session) State() State {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.state
+}
 
 // IsActive reports whether the Session currently holds a live Transport binding.
-func (s *Session) IsActive() bool { return s.state == StateActive }
+func (s *Session) IsActive() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.state == StateActive
+}
+
+// ActiveTransportName is the Transport the Session is bound to, or "" when it holds
+// no binding (Req 3.4, 13.1).
+func (s *Session) ActiveTransportName() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activeTransportName
+}
 
 // MarkDisconnected moves an active Session to the disconnected state (Req 3.6).
 // It is a no-op on a closed Session, so a late failover decision cannot resurrect
 // one.
 func (s *Session) MarkDisconnected() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.state == StateClosed {
 		return
 	}
 	s.state = StateDisconnected
-	s.ActiveTransportName = ""
+	s.activeTransportName = ""
 }
 
 // MarkReconnected moves a disconnected Session back to active on the named
 // Transport (Req 3.7). The sequence state and keys are untouched, which is what
 // lets the retained queue flush in order onto the new binding.
 func (s *Session) MarkReconnected(transportName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.state == StateClosed {
 		return
 	}
 	s.state = StateActive
-	s.ActiveTransportName = transportName
+	s.activeTransportName = transportName
 }
 
 // Rebind points the Session at another Transport (Req 3.3). Everything Req 3.4
 // promises to preserve is deliberately left alone here: only the Transport name
 // moves.
 func (s *Session) Rebind(transportName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.state == StateClosed {
 		return
 	}
 	s.state = StateActive
-	s.ActiveTransportName = transportName
+	s.activeTransportName = transportName
 }
 
 // close marks the Session terminal and releases its channels. Closing the channels
 // is what unblocks the Session's own goroutines; the registry has already dropped
 // the entry by the time this runs, so no other Session is affected (Req 4.3).
 func (s *Session) close() {
+	s.mu.Lock()
 	if s.state == StateClosed {
+		s.mu.Unlock()
 		return
 	}
 	s.state = StateClosed
-	s.ActiveTransportName = ""
+	s.activeTransportName = ""
+	s.mu.Unlock()
+
+	// The channels are closed outside the lock: closing one can wake a goroutine that
+	// immediately calls back in to read the state, and holding the lock across that
+	// would deadlock.
 	close(s.Inbound)
 	close(s.Outbound)
 	close(s.Control)

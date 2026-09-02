@@ -431,8 +431,8 @@ func TestRebindPreservesEverythingReq34Names(t *testing.T) {
 	if after.inboundCount != before.inboundCount {
 		t.Fatal("inbound sequence state changed across a rebind")
 	}
-	if s.ActiveTransportName != "BT_Transport" {
-		t.Fatalf("active transport is %q, want BT_Transport", s.ActiveTransportName)
+	if s.ActiveTransportName() != "BT_Transport" {
+		t.Fatalf("active transport is %q, want BT_Transport", s.ActiveTransportName())
 	}
 	if next := s.Sequence.NextSequence(); next != first+1 {
 		t.Fatalf("next sequence after rebind is %d, want %d", next, first+1)

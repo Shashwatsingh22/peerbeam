@@ -422,20 +422,20 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Every capability in Requirements 1-11 has a command; with the bulk channel saturated, a control message is written next by `writerLoop`
     - _Requirements: 4.6, 12.6_
 
-- [ ] 22. End-to-end integration and cross-compiled packaging
-  - [ ] 22.1 Configure `go build` cross-compilation for the release targets
+- [x] 22. End-to-end integration and cross-compiled packaging
+  - [x] 22.1 Configure `go build` cross-compilation for the release targets
     - Add a build script (or `Makefile`) invoking `go build` for `darwin/arm64`, `darwin/amd64`, `windows/amd64`, `linux/amd64`, and `linux/arm64` with `CGO_ENABLED=1` and the appropriate cross toolchain per target for the Bluetooth shim, producing a single file <= 50 MiB per target
     - _Requirements: 12.1, 12.2, 12.7_
 
-  - [ ]* 22.2 Write end-to-end integration tests over loopback and the in-memory bridge
+  - [x]* 22.2 Write end-to-end integration tests over loopback and the in-memory bridge
     - Under standard `go test`, using `LoopbackLanTransport` + `InMemoryBluetoothBridge`: pair/connect/send text with acknowledgement; send a large file over loopback and verify the digest and per-window goodput; kill LAN mid-transfer and verify rebind keeps id and keys and resumes from the acknowledged offset at the 512-byte chunk size; eight concurrent sessions with one transfer measuring other-session text latency and sampling resident memory; restart and confirm the trust store loads before the first session request
     - _Requirements: 3.4, 3.5, 4.6, 9.10, 11.2, 11.6_
 
-  - [ ]* 22.3 Write smoke tests on the release artifacts
+  - [x]* 22.3 Write smoke tests on the release artifacts
     - Single file under 50 MiB reaching ready state within 5 s in an empty container; owner-only `identity.key` after first run; beacon republish <= 10 s, keepalive 5 s, chunk sizes 65,536 and 512
     - _Requirements: 1.9, 3.1, 7.10, 9.1, 12.1, 12.2, 12.7_
 
-- [ ] 23. Final checkpoint - ensure all tests pass
+- [x] 23. Final checkpoint - ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

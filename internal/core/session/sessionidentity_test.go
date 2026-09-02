@@ -87,12 +87,12 @@ func TestProperty15TransportChangePreservesSessionIdentity(t *testing.T) {
 
 		for step, event := range events {
 			target := rapid.SampledFrom(transports).Draw(rt, fmt.Sprintf("target%d", step))
-			transportBefore := s.ActiveTransportName
+			transportBefore := s.ActiveTransportName()
 
 			switch event {
 			case eventSwitch, eventRebind:
 				s.Rebind(target)
-				if s.ActiveTransportName != target {
+				if s.ActiveTransportName() != target {
 					rt.Fatalf("step %d: %s did not move the session to %s",
 						step, event, target)
 				}
@@ -101,7 +101,7 @@ func TestProperty15TransportChangePreservesSessionIdentity(t *testing.T) {
 				// Req 2.9: a switch that does not complete leaves the Session on its
 				// current Transport. Modelled as no state change at all, which is what a
 				// failed attempt is: the caller reports the failure and calls nothing.
-				if s.ActiveTransportName != transportBefore {
+				if s.ActiveTransportName() != transportBefore {
 					rt.Fatalf("step %d: a failed switch changed the transport", step)
 				}
 

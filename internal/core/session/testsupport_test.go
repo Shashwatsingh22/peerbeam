@@ -67,7 +67,7 @@ func factsFor(s *Session) sessionFacts {
 		keys:            string(s.Keys),
 		nextOutbound:    s.Sequence.PeekNextSequence(),
 		inboundCount:    s.Sequence.InboundCount(),
-		activeTransport: s.ActiveTransportName,
+		activeTransport: s.ActiveTransportName(),
 		state:           s.State(),
 		queueBytes:      s.Queue.ByteCount(),
 	}
