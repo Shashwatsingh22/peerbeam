@@ -28,7 +28,7 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
   - Create the `shim/` directory with `macos`, `windows`, and `linux` subdirectories for the cgo Bluetooth code
   - _Requirements: 12.2, 12.6, 12.7_
 
-- [ ] 2. Implement the wire codec (Message_Codec)
+- [x] 2. Implement the wire codec (Message_Codec)
   - [x] 2.1 Implement `Frame`, `MessageType`, and codec constants
     - Create `internal/core/codec/frame.go` with the `Frame` struct (ProtocolVersion uint8, Type uint8, Sequence uint64, Payload []byte) and an `Equal` method using `bytes.Equal`
     - Create `internal/core/codec/messagetype.go` with the `MessageType` typed constants and `MessageTypeFromCode` returning `(MessageType, bool)`
@@ -40,7 +40,7 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Use `encoding/binary` big-endian writes; reject payloads over 1,048,576 bytes at encode time, naming the length and the maximum
     - _Requirements: 8.1, 8.9, 8.10_
 
-  - [ ] 2.3 Implement `FrameReader` incremental parsing with strict field-order validation
+  - [x] 2.3 Implement `FrameReader` incremental parsing with strict field-order validation
     - Create `internal/core/codec/reader.go` with a growable buffer, `Push(bytes []byte) ReadResult`, and `FlushIncomplete() *ReadResult`, holding an injected `Clock`
     - Validate protocol version, then type, then sequence, then payload length, in that order, returning the first failing field via the tagged `CodecError` (`UnsupportedVersion`, `PayloadTooLarge`, `FramingMismatch`)
     - Reject a declared length over 1 MiB at the header before buffering payload; return unrecognised type codes as parsed frames (not errors); enforce the 10-second payload timeout using the injected `Clock`
