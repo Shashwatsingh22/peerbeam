@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
+
+	"github.com/peerbeam/peerbeam/internal/core/clock"
 )
 
 // PayloadTimeout is how long a frame whose header has been parsed may wait for the
@@ -100,16 +102,17 @@ type ReadResult struct {
 // Not safe for concurrent use; a session drives one reader from its reader goroutine.
 type FrameReader struct {
 	acceptedVersion int
-	clock           Clock
+	clock           clock.Clock
 	buf             []byte
 	off             int        // start of the frame currently being assembled, within buf
 	headerParsedAt  *time.Time // set while a header is complete but its payload is not
 }
 
 // NewFrameReader returns a reader that accepts only ProtocolVersion and measures the
-// Req 8.12 payload timeout with clock.
-func NewFrameReader(clock Clock) *FrameReader {
-	return &FrameReader{acceptedVersion: ProtocolVersion, clock: clock}
+// Req 8.12 payload timeout with clk. The parameter is not named clock so that it does
+// not shadow the package of the same name.
+func NewFrameReader(clk clock.Clock) *FrameReader {
+	return &FrameReader{acceptedVersion: ProtocolVersion, clock: clk}
 }
 
 // Push feeds newly read bytes and returns every complete Frame now available, in

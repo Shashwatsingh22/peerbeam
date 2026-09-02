@@ -81,14 +81,14 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
 - [x] 3. Checkpoint - codec complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Implement discovery bookkeeping (Discovery_Service core)
+- [x] 4. Implement discovery bookkeeping (Discovery_Service core)
   - [x] 4.1 Implement announcement model, codec, and validation
     - Create `internal/core/discovery/announcement.go` (`Announcement` struct with json tags: DisplayName, Fingerprint, ProtocolVersion, Port) plus `Medium`, `PeerEndpoint`, `VisiblePeer`
     - Create `internal/core/discovery/announcementcodec.go` marshalling to/from JSON with `encoding/json`
     - Implement `CheckAnnouncement` returning the tagged `AnnouncementCheck` (`Valid` or `Malformed` reasons) for missing fields, a port outside 1..65535, or a display name over 64 UTF-8 characters
     - _Requirements: 1.1, 1.11_
 
-  - [ ] 4.2 Implement `PeerRegistry` as a bounded, fingerprint-keyed upsert
+  - [x] 4.2 Implement `PeerRegistry` as a bounded, fingerprint-keyed upsert
     - Create `internal/core/discovery/peerregistry.go` with `Observe`, `AddManual`, `Expire`, `Visible`, `MediaFor`, an injected `Clock`, and `MaxVisiblePeers = 64`
     - Upsert by fingerprint (single entry per fingerprint, merged media, most-recent address/port per medium); mark manual entries as manually supplied; validate manual host/port and leave the list unchanged on rejection naming address vs port; expire peers stale on every medium for >= 30 s
     - _Requirements: 1.2, 1.5, 1.6, 1.7, 1.8, 1.10_

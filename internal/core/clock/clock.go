@@ -1,4 +1,4 @@
-package codec
+package clock
 
 import "time"
 
@@ -7,14 +7,15 @@ import "time"
 // calling time.Now directly, so the duration is testable without sleeping.
 // Production wires realClock; tests wire a manual clock they advance by hand.
 //
-// This lives in codec because codec is the first package to need it. It is a
-// candidate to move to a shared internal/core location once a second package
-// needs it; the interface is small enough that moving it is a mechanical change.
+// This started out in codec, the first package that needed it, with a note that it
+// should move once a second package needed one. The peer registry is that second
+// package (Req 1.5 expiry), so the interface now lives here and codec consumes it
+// from this package rather than declaring its own.
 type Clock interface {
 	Now() time.Time
 }
 
-// realClock is the production Clock. It is the only place in this package that
+// realClock is the production Clock. It is the only place in internal/core that
 // reads wall-clock time.
 type realClock struct{}
 
