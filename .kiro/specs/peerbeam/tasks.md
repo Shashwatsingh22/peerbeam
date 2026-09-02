@@ -371,25 +371,25 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Two in-process nodes over a `LoopbackLanTransport` reach each other's visible peer list within the discovery window, under standard `go test`
     - _Requirements: 1.3_
 
-- [ ] 18. Implement the Bluetooth, clipboard, and share-sheet platform adapters
-  - [ ] 18.1 Implement `BluetoothBridge` and `BtTransport`
+- [x] 18. Implement the Bluetooth, clipboard, and share-sheet platform adapters
+  - [x] 18.1 Implement `BluetoothBridge` and `BtTransport`
     - Create `internal/platform/bt/bridge.go` (re-exporting the `core` interface + `DiscoveredBtPeer` wiring), `internal/platform/bt/transport.go` (`BtTransport` with BT goodput and 512-byte chunk size), and `internal/platform/bt/shimbridge.go` (`ShimBluetoothBridge`) speaking the length-prefixed frame format over the helper process stdio with `os/exec` (Option B), plus an `InMemoryBluetoothBridge` test double piping bytes over channels
     - Report `BT_Transport` unavailable when no bridge is available; leave a cgo note in `bridge.go` for the Option A linked shim path
     - _Requirements: 1.4, 2.1, 7.10, 12.3_
 
-  - [ ] 18.2 Implement `CommandClipboardPort` per OS
+  - [x] 18.2 Implement `CommandClipboardPort` per OS
     - Create `internal/platform/clip/commandport.go` implementing `ClipboardPort` by shelling out with `os/exec` to pbpaste/pbcopy (macOS), Get-Clipboard/clip.exe (Windows), wl-paste/wl-copy with an xclip fallback (Linux); report unsupported when no tool is present
     - _Requirements: 6.1, 6.2_
 
-  - [ ] 18.3 Implement the macOS share sheet for AirDrop handoff
+  - [x] 18.3 Implement the macOS share sheet for AirDrop handoff
     - Create `internal/platform/share/macsharesheet.go` invoking the macOS cgo shim (`NSSharingServicePicker`) to open the share picker with the file selected within 5 s, keeping sessions unchanged; reject on non-macOS with a build-tagged stub, and reject a missing/unreadable file naming the file and reason
     - _Requirements: 12.4, 12.5, 12.9_
 
-  - [ ]* 18.4 Write unit tests for the per-OS clipboard adapters
+  - [x]* 18.4 Write unit tests for the per-OS clipboard adapters
     - Each adapter round-trips text against its real command line tool
     - _Requirements: 6.1, 6.2_
 
-  - [ ]* 18.5 Write unit tests for the platform capability branches
+  - [x]* 18.5 Write unit tests for the platform capability branches
     - Bluetooth-unavailable startup (LAN only), no-transport startup, non-macOS AirDrop rejection, missing/unreadable-file AirDrop rejection
     - _Requirements: 12.3, 12.5, 12.8, 12.9_
 
