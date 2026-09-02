@@ -46,35 +46,35 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Reject a declared length over 1 MiB at the header before buffering payload; return unrecognised type codes as parsed frames (not errors); enforce the 10-second payload timeout using the injected `Clock`
     - _Requirements: 8.2, 8.4, 8.5, 8.6, 8.7, 8.8, 8.11, 8.12_
 
-  - [ ]* 2.4 Write property test for frame round trip
+  - [x]* 2.4 Write property test for frame round trip
     - **Property 1: Frame round trip**
     - **Validates: Requirements 8.1, 8.2, 8.3**
 
-  - [ ]* 2.5 Write property test for byte round trip and encoding determinism
+  - [x]* 2.5 Write property test for byte round trip and encoding determinism
     - **Property 2: Byte round trip and encoding determinism**
     - **Validates: Requirements 8.4, 8.9**
 
-  - [ ]* 2.6 Write property test for stream framing under arbitrary segmentation
+  - [x]* 2.6 Write property test for stream framing under arbitrary segmentation
     - **Property 3: Stream framing under arbitrary segmentation**
     - **Validates: Requirements 8.2, 8.3**
 
-  - [ ]* 2.7 Write property test for incomplete frames
+  - [x]* 2.7 Write property test for incomplete frames
     - **Property 4: Incomplete frames produce a framing error and leave sequence state untouched**
     - **Validates: Requirements 8.5, 8.12**
 
-  - [ ]* 2.8 Write property test for header field-order validation
+  - [x]* 2.8 Write property test for header field-order validation
     - **Property 5: Header validation happens in field order and reports the first failure**
     - **Validates: Requirements 8.6, 8.7, 8.11**
 
-  - [ ]* 2.9 Write property test for oversized payload rejection
+  - [x]* 2.9 Write property test for oversized payload rejection
     - **Property 6: Oversized payloads are rejected at encode time**
     - **Validates: Requirements 8.10**
 
-  - [ ]* 2.10 Write property test for unrecognised message type skipping
+  - [x]* 2.10 Write property test for unrecognised message type skipping
     - **Property 7: Unrecognised message types are skipped and the stream continues**
     - **Validates: Requirements 8.8**
 
-  - [ ]* 2.11 Write golden-bytes unit test for the wire format
+  - [x]* 2.11 Write golden-bytes unit test for the wire format
     - Fixed frame in, hex-literal expected bytes out, to pin field layout against accidental reorder
     - _Requirements: 8.9_
 
@@ -93,19 +93,19 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Upsert by fingerprint (single entry per fingerprint, merged media, most-recent address/port per medium); mark manual entries as manually supplied; validate manual host/port and leave the list unchanged on rejection naming address vs port; expire peers stale on every medium for >= 30 s
     - _Requirements: 1.2, 1.5, 1.6, 1.7, 1.8, 1.10_
 
-  - [ ]* 4.3 Write property test for announcement validation and round trip
+  - [x]* 4.3 Write property test for announcement validation and round trip
     - **Property 8: Announcement validation and round trip**
     - **Validates: Requirements 1.1, 1.11**
 
-  - [ ]* 4.4 Write property test for the bounded fingerprint-keyed upsert
+  - [x]* 4.4 Write property test for the bounded fingerprint-keyed upsert
     - **Property 9: The visible Peer list is a bounded, fingerprint-keyed upsert**
     - **Validates: Requirements 1.2, 1.6, 1.7, 1.8**
 
-  - [ ]* 4.5 Write property test for staleness-based expiry
+  - [x]* 4.5 Write property test for staleness-based expiry
     - **Property 10: Peers are removed exactly when every medium has gone stale**
     - **Validates: Requirements 1.5**
 
-  - [ ]* 4.6 Write property test for invalid manual entries
+  - [x]* 4.6 Write property test for invalid manual entries
     - **Property 11: Invalid manual entries change nothing**
     - **Validates: Requirements 1.10**
 
