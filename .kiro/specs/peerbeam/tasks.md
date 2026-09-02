@@ -35,7 +35,7 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Define `ProtocolVersion`, `HeaderBytes = 14`, `MaxPayloadBytes = 1_048_576`
     - _Requirements: 8.1_
 
-  - [ ] 2.2 Implement `EncodeFrame` with the fixed 14-byte big-endian header
+  - [x] 2.2 Implement `EncodeFrame` with the fixed 14-byte big-endian header
     - Create `internal/core/codec/encoder.go` returning the tagged `EncodeResult` (either `Bytes` or `*PayloadTooLarge`)
     - Use `encoding/binary` big-endian writes; reject payloads over 1,048,576 bytes at encode time, naming the length and the maximum
     - _Requirements: 8.1, 8.9, 8.10_
