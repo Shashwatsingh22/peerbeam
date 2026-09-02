@@ -57,16 +57,27 @@ func (t *BtTransport) ChunkSizeBytes() int { return transport.BTChunkBytes }
 // Available reports whether this Transport can be a candidate at all (Req 12.3).
 func (t *BtTransport) Available() bool { return t.bridge.Available() }
 
-// Unavailable returns the Req 12.3 report when Bluetooth cannot be used, and false when it
-// can. It is a method on the Transport rather than on the bridge so internal/app has one
-// place to ask.
-func (t *BtTransport) Unavailable() (*report, bool) {
+// UnavailableReason explains why Bluetooth cannot be used, or "" when it can (Req 12.3).
+//
+// It is a method on the Transport rather than on the bridge so internal/app has one place to
+// ask, and it returns a plain string rather than a package-local type so the wiring layer can
+// consume it through a small interface instead of importing this package's error shapes.
+func (t *BtTransport) UnavailableReason() string {
 	if t.bridge.Available() {
-		return nil, false
+		return ""
 	}
-	reason := "no bluetooth interface is available on this host"
 	if unavailable, ok := t.bridge.(*UnavailableBridge); ok && unavailable.Reason != "" {
-		reason = unavailable.Reason
+		return unavailable.Reason
+	}
+	return "no bluetooth interface is available on this host"
+}
+
+// Unavailable returns the Req 12.3 report when Bluetooth cannot be used, and false when it
+// can.
+func (t *BtTransport) Unavailable() (*report, bool) {
+	reason := t.UnavailableReason()
+	if reason == "" {
+		return nil, false
 	}
 	return &report{TransportName: transport.NameBT, Reason: reason}, true
 }

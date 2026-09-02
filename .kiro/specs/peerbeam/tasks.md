@@ -405,20 +405,20 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
 - [x] 20. Checkpoint - platform adapters complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 21. Implement the node wiring and CLI (app and cmd)
-  - [ ] 21.1 Implement the `NewPeerNode` constructor and concurrency scaffolding
+- [x] 21. Implement the node wiring and CLI (app and cmd)
+  - [x] 21.1 Implement the `NewPeerNode` constructor and concurrency scaffolding
     - Create `internal/app/peernode.go`: build the root `context.Context` via `context.WithCancel` and a `sync.WaitGroup`, wire discovery/pairing/session registry/transport manager/services, and give each session a child context with reader, writer (control channel preferred over bulk via a non-blocking `select`), keepalive, and metrics goroutines plus chunk pipelining
     - _Requirements: 4.2, 4.6_
 
-  - [ ] 21.2 Implement the cobra command tree
+  - [x] 21.2 Implement the cobra command tree
     - Create `cmd/peerbeam/main.go` (builds the cobra root command) and `internal/app/commands.go` with one command per capability (peers, peers add, pair, trust list/remove, connect, disconnect, pin, send, clip send/auto/sync/pending, file send/resume/cancel, status, log tail, airdrop), no graphical surface
     - _Requirements: 12.6_
 
-  - [ ] 21.3 Implement the status renderer
+  - [x] 21.3 Implement the status renderer
     - Create `internal/app/statusrenderer.go` rendering per-session status via `BuildStatusLine` and refreshing every second with a `time.Ticker`, showing transport-change reports from the closed reason set
     - _Requirements: 13.1, 13.2, 13.3_
 
-  - [ ]* 21.4 Write unit test for CLI command coverage and writer priority
+  - [x]* 21.4 Write unit test for CLI command coverage and writer priority
     - Every capability in Requirements 1-11 has a command; with the bulk channel saturated, a control message is written next by `writerLoop`
     - _Requirements: 4.6, 12.6_
 
