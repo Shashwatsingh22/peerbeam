@@ -78,11 +78,11 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Fixed frame in, hex-literal expected bytes out, to pin field layout against accidental reorder
     - _Requirements: 8.9_
 
-- [ ] 3. Checkpoint - codec complete
+- [x] 3. Checkpoint - codec complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 4. Implement discovery bookkeeping (Discovery_Service core)
-  - [ ] 4.1 Implement announcement model, codec, and validation
+  - [x] 4.1 Implement announcement model, codec, and validation
     - Create `internal/core/discovery/announcement.go` (`Announcement` struct with json tags: DisplayName, Fingerprint, ProtocolVersion, Port) plus `Medium`, `PeerEndpoint`, `VisiblePeer`
     - Create `internal/core/discovery/announcementcodec.go` marshalling to/from JSON with `encoding/json`
     - Implement `CheckAnnouncement` returning the tagged `AnnouncementCheck` (`Valid` or `Malformed` reasons) for missing fields, a port outside 1..65535, or a display name over 64 UTF-8 characters
