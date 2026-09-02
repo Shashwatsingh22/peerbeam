@@ -193,22 +193,22 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 17: The disconnected outbound queue respects its budget, order, and retention**
     - **Validates: Requirements 3.6, 3.7, 3.9, 3.10**
 
-- [ ] 9. Implement text validation and inbound disposition (TextService core)
-  - [ ] 9.1 Implement text size validation and strict UTF-8 decoding
+- [x] 9. Implement text validation and inbound disposition (TextService core)
+  - [x] 9.1 Implement text size validation and strict UTF-8 decoding
     - Create `internal/core/text/validation.go` with `TextMinBytes`/`TextMaxBytes`, the tagged `TextCheck` (`Valid`, `OutOfRange`, `InvalidUTF8`), and `DecodeStrictUTF8` using `utf8.Valid` rather than a silently repairing `string()` conversion
     - Accept 1..65,536 UTF-8 bytes; reject out-of-range submissions naming the range without sending or advancing the sequence number
     - _Requirements: 5.1, 5.2, 5.8_
 
-  - [ ] 9.2 Implement `DisposeInboundText`
+  - [x] 9.2 Implement `DisposeInboundText`
     - Extend `internal/core/text/validation.go` (or add `internal/core/text/inbound.go`) with the tagged `InboundTextDisposition` (`Display`, `DuplicateDiscard`, `WithholdWithError`, `Incomplete`)
     - Always acknowledge with the exact sequence number; display only when content, sender name, and timestamp are all present and the payload is valid UTF-8 and <= 65,536 bytes; otherwise withhold and either return an error naming the sequence and fault or record an incomplete event naming the missing items; keep the session active
     - _Requirements: 5.3, 5.4, 5.5, 5.6, 5.9_
 
-  - [ ]* 9.3 Write property test for symmetric size validation
+  - [x]* 9.3 Write property test for symmetric size validation
     - **Property 20: Text size validation is symmetric and side-effect free**
     - **Validates: Requirements 5.1, 5.2, 5.8**
 
-  - [ ]* 9.4 Write property test for inbound text disposition
+  - [x]* 9.4 Write property test for inbound text disposition
     - **Property 21: Inbound text is always acknowledged and displayed only when valid and complete**
     - **Validates: Requirements 5.3, 5.4, 5.5, 5.6, 5.9**
 
