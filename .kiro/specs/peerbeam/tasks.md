@@ -157,39 +157,39 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
 - [x] 7. Checkpoint - discovery and transport logic complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Implement session identity, sequencing, reordering, and queues (Session core)
-  - [ ] 8.1 Implement `SessionId`, `SessionRegistry`, and admission
+- [x] 8. Implement session identity, sequencing, reordering, and queues (Session core)
+  - [x] 8.1 Implement `SessionId`, `SessionRegistry`, and admission
     - Create `internal/core/session/sessionid.go` and `internal/core/session/registry.go` with `MaxConcurrentSessions = 8` and a `sync.Mutex` guarding only the registry map, never held across I/O
     - Implement the tagged `SessionAdmission` (`Admitted`, `LimitReached`, `PeerNotTrusted`, `KeyMismatch`); reject a 9th session naming the limit; give each session a distinct id and key material and its own channels; leave other sessions unchanged on close
     - _Requirements: 4.1, 4.2, 4.3, 4.9_
 
-  - [ ] 8.2 Implement `SequenceTracker` and `ReorderBuffer`
+  - [x] 8.2 Implement `SequenceTracker` and `ReorderBuffer`
     - Create `internal/core/session/sequencetracker.go`: monotonic outbound assignment via `NextSequence`, inbound duplicate detection via `AcceptInbound`
     - Create `internal/core/session/reorderbuffer.go`: present in ascending sequence order, hold a Message following a gap for at most 10 s (injected `Clock`) then release via `Offer`/`DrainExpired`
     - _Requirements: 5.1, 5.7, 5.10_
 
-  - [ ] 8.3 Implement `OutboundQueue` for the disconnected state
+  - [x] 8.3 Implement `OutboundQueue` for the disconnected state
     - Create `internal/core/session/outboundqueue.go` with `QueueByteLimit = 64 MiB` and `QueueRetention = 10m`
     - `Submit` rejects over-budget submissions via the tagged `QueueResult` (`Rejected` carrying the limit) leaving the queue unchanged; `DrainForFlush` returns retained messages in ascending sequence order; `DiscardExpired` drops messages past retention and returns their sequence numbers
     - _Requirements: 3.6, 3.7, 3.9, 3.10_
 
-  - [ ] 8.4 Implement group send fan-out
+  - [x] 8.4 Implement group send fan-out
     - Create `internal/core/session/groupsend.go` with the tagged `DeliveryOutcome` and `SendToGroup`: one goroutine per selected peer under a single 10 s `context.WithTimeout` and a `sync.WaitGroup`, exactly one outcome per peer, each active session consuming its own next sequence number, inactive peers reported not delivered with their message queued
     - _Requirements: 4.4, 4.5, 4.7, 4.8_
 
-  - [ ]* 8.5 Write property test for session bounds and isolation
+  - [x]* 8.5 Write property test for session bounds and isolation
     - **Property 18: Sessions are bounded and mutually isolated**
     - **Validates: Requirements 4.1, 4.2, 4.3, 4.9**
 
-  - [ ]* 8.6 Write property test for group send outcomes
+  - [x]* 8.6 Write property test for group send outcomes
     - **Property 19: A group send produces exactly one outcome per selected Peer**
     - **Validates: Requirements 4.4, 4.5, 4.7, 4.8**
 
-  - [ ]* 8.7 Write property test for presentation ordering
+  - [x]* 8.7 Write property test for presentation ordering
     - **Property 22: Presentation is ordered, gap-tolerant, and duplicate-free**
     - **Validates: Requirements 5.7, 5.10**
 
-  - [ ]* 8.8 Write property test for the disconnected outbound queue
+  - [x]* 8.8 Write property test for the disconnected outbound queue
     - **Property 17: The disconnected outbound queue respects its budget, order, and retention**
     - **Validates: Requirements 3.6, 3.7, 3.9, 3.10**
 
