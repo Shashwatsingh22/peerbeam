@@ -35,3 +35,6 @@ go.work.sum
 .vscode/
 *.swp
 *~
+
+# Kiro transient task-state cache (progress is tracked in tasks.md checkboxes)
+.kiro/specs/**/tasks.meta.json

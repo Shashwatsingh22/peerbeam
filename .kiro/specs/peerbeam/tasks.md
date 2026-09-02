@@ -20,7 +20,7 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
 
 ## Tasks
 
-- [ ] 1. Set up the Go module and package skeleton
+- [x] 1. Set up the Go module and package skeleton
   - Run `go mod init github.com/peerbeam/peerbeam` and set the `go 1.23` toolchain directive
   - Pin dependencies in `go.mod`: `github.com/spf13/cobra v1.8.1`, `golang.org/x/crypto v0.31.0`, and `pgregory.net/rapid v1.1.0` (test only); commit the resulting `go.sum`
   - Create the pure package layout under `internal/core` (codec, crypto, discovery, transport, session, text, clipboard, transfer, trust, report) with no imports from `net`, `os`, or sockets
