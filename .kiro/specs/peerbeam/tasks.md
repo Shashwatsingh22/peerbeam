@@ -212,34 +212,34 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 21: Inbound text is always acknowledged and displayed only when valid and complete**
     - **Validates: Requirements 5.3, 5.4, 5.5, 5.6, 5.9**
 
-- [ ] 10. Implement clipboard policy and part framing (Clipboard_Service core)
-  - [ ] 10.1 Implement clipboard send validation and part split/join
+- [x] 10. Implement clipboard policy and part framing (Clipboard_Service core)
+  - [x] 10.1 Implement clipboard send validation and part split/join
     - Create `internal/core/clipboard/parts.go` with `SplitClipboard`/`JoinClipboard` (4-byte part header, 524,288-byte parts) and `ClipboardMaxBytes = 1 MiB`, `ClipboardPartBytes = 512 KiB`
     - Implement clipboard send validation: accept 1..1,048,576 UTF-8 bytes; reject empty clipboard as unsupported content type and over-limit content naming the 1 MiB limit, sending nothing and leaving the clipboard unchanged
     - _Requirements: 6.1, 6.7, 6.8, 6.11_
 
-  - [ ] 10.2 Implement `DisposeInboundClipboard` and the pending-entry lifecycle
+  - [x] 10.2 Implement `DisposeInboundClipboard` and the pending-entry lifecycle
     - Create `internal/core/clipboard/policy.go` with `ClipboardSessionState`, `PendingClipboardEntry`, and the tagged `ClipboardDisposition` (`ApplyNow`, `HoldPending`, `DiscardAsEcho`, `Reject`)
     - Auto-apply replaces the whole clipboard; disabled auto-apply holds one pending entry per session (discarding any earlier one) and prompts with sender name and timestamp; confirm within 10 min applies and clears; decline or timeout clears without changing the clipboard; reject over-limit or invalid-UTF-8 naming the sequence; suppress echoes matching the last applied or last sent digest
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.9, 6.10_
 
-  - [ ]* 10.3 Write property test for clipboard send validation
+  - [x]* 10.3 Write property test for clipboard send validation
     - **Property 23: Clipboard send validation**
     - **Validates: Requirements 6.1, 6.7, 6.11**
 
-  - [ ]* 10.4 Write property test for clipboard part round trip
+  - [x]* 10.4 Write property test for clipboard part round trip
     - **Property 24: Clipboard part split and join round trip**
     - **Validates: Requirements 6.8**
 
-  - [ ]* 10.5 Write property test for inbound clipboard disposition and pending lifecycle
+  - [x]* 10.5 Write property test for inbound clipboard disposition and pending lifecycle
     - **Property 25: Inbound clipboard disposition and the pending-entry lifecycle**
     - **Validates: Requirements 6.2, 6.3, 6.4, 6.9, 6.10**
 
-  - [ ]* 10.6 Write property test for clipboard echo suppression
+  - [x]* 10.6 Write property test for clipboard echo suppression
     - **Property 26: Clipboard echo suppression prevents loops**
     - **Validates: Requirements 6.5, 6.6**
 
-- [ ] 11. Checkpoint - session, text, and clipboard logic complete
+- [x] 11. Checkpoint - session, text, and clipboard logic complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 12. Implement transfer chunk planning and progress (Transfer_Service core)
