@@ -327,7 +327,7 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Create `internal/core/report/failure.go` (or a `detectors.go`) with degraded-throughput and stall detection over a 10-second window of per-second samples / acknowledged byte counts, continuing the transfer and keeping the session active
     - _Requirements: 2.5, 2.9, 11.8, 11.9, 13.4, 13.6, 13.7_
 
-  - [ ]* 15.3 Write property test for the persistent trust store
+  - [x]* 15.3 Write property test for the persistent trust store
     - **Property 31: The trust store persists faithfully, holds one entry per fingerprint, and never loses a key silently**
     - **Validates: Requirements 9.4, 9.9, 9.10, 9.11**
 
@@ -393,16 +393,16 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - Bluetooth-unavailable startup (LAN only), no-transport startup, non-macOS AirDrop rejection, missing/unreadable-file AirDrop rejection
     - _Requirements: 12.3, 12.5, 12.8, 12.9_
 
-- [ ] 19. Implement the file key store and trust store platform adapters
-  - [ ] 19.1 Implement `FileKeyStore` and cross-platform permissions
+- [x] 19. Implement the file key store and trust store platform adapters
+  - [x] 19.1 Implement `FileKeyStore` and cross-platform permissions
     - Create `internal/platform/store/keystore.go` and `internal/platform/store/permissions.go` (+ `permissions_windows.go`): generate the Ed25519 identity on first run, store `identity.key` owner-only via `os.Chmod(path, 0o600)` on macOS/Linux and a Windows ACL via `golang.org/x/sys/windows` in `permissions_windows.go`, and return an error naming the failing step so the node rejects sessions until it succeeds
     - _Requirements: 9.1, 9.2_
 
-  - [ ] 19.2 Implement `FileTrustStore` with an integrity tag
+  - [x] 19.2 Implement `FileTrustStore` with an integrity tag
     - Create `internal/platform/store/truststore.go`: `trusted.json` (via `encoding/json`) with an HMAC-SHA256 tag over canonical entry bytes; load before the first session request, hold >= 32 entries and one per fingerprint, and on a failed tag check report a trust store failure, leave the file unmodified, and block every session request; delete a key only on user removal
     - _Requirements: 9.9, 9.10, 9.11_
 
-- [ ] 20. Checkpoint - platform adapters complete
+- [x] 20. Checkpoint - platform adapters complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 21. Implement the node wiring and CLI (app and cmd)
