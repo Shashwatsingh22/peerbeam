@@ -131,30 +131,30 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 13: The connection ladder attempts each candidate at most once and reports every attempt**
     - **Validates: Requirements 2.3, 2.4, 2.5, 2.6, 3.8**
 
-- [ ] 6. Implement switch decision, keepalive, and metrics (Transport_Manager core, part 2)
-  - [ ] 6.1 Implement `DecideSwitch` and its input/decision types
+- [x] 6. Implement switch decision, keepalive, and metrics (Transport_Manager core, part 2)
+  - [x] 6.1 Implement `DecideSwitch` and its input/decision types
     - Create `internal/core/transport/switchpolicy.go` with `SwitchInputs`, the tagged `SwitchDecision` (`Stay`, `Upgrade`, `Rebind`, `GoDisconnected`), and the `UpgradeStability = 5s` / `UpgradeCooldown = 30s` constants
     - Encode the full rule table: pin overrides everything; unavailable-active rebinds to best candidate or disconnects; healthy upgrades only when strictly faster, stable 5 s, and 30 s since last change; else stay
     - _Requirements: 2.8, 2.10, 2.11, 3.3_
 
-  - [ ] 6.2 Implement `KeepaliveTracker` and `TransportMetrics`
+  - [x] 6.2 Implement `KeepaliveTracker` and `TransportMetrics`
     - Create `internal/core/transport/keepalive.go`: three-strike counter with `OnResponse`, `OnTimeout`, and `Misses`, marking unavailable on the third consecutive miss
     - Create `internal/core/transport/metrics.go`: sample measured goodput and RTT once per second, retain only the latest of each
     - _Requirements: 3.1, 3.2, 2.7_
 
-  - [ ]* 6.3 Write property test for the switch decision rule table
+  - [x]* 6.3 Write property test for the switch decision rule table
     - **Property 14: The switch decision follows exactly one rule table**
     - **Validates: Requirements 2.8, 2.10, 2.11, 3.3**
 
-  - [ ]* 6.4 Write property test for keepalive strike counting
+  - [x]* 6.4 Write property test for keepalive strike counting
     - **Property 16: Keepalive marks a Transport unavailable on exactly the third consecutive miss**
     - **Validates: Requirements 3.1, 3.2**
 
-  - [ ]* 6.5 Write unit test for metrics retention
+  - [x]* 6.5 Write unit test for metrics retention
     - Sampling keeps only the most recent goodput and RTT values
     - _Requirements: 2.7_
 
-- [ ] 7. Checkpoint - discovery and transport logic complete
+- [x] 7. Checkpoint - discovery and transport logic complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 8. Implement session identity, sequencing, reordering, and queues (Session core)
