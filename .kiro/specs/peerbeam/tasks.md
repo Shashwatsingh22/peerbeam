@@ -109,25 +109,25 @@ per-OS native code reached over cgo. This is fixed by the design; no language ch
     - **Property 11: Invalid manual entries change nothing**
     - **Validates: Requirements 1.10**
 
-- [ ] 5. Implement transport ranking and the connection ladder (Transport_Manager core, part 1)
-  - [ ] 5.1 Define `Transport` / `TransportConnection` interfaces and ranking constants
+- [x] 5. Implement transport ranking and the connection ladder (Transport_Manager core, part 1)
+  - [x] 5.1 Define `Transport` / `TransportConnection` interfaces and ranking constants
     - Create `internal/core/transport/transport.go` with both interfaces and the goodput/chunk constants (`LANExpectedGoodput`, `BTExpectedGoodput`, `LANChunkBytes = 65_536`, `BTChunkBytes = 512`)
     - _Requirements: 2.1, 7.10_
 
-  - [ ] 5.2 Implement `CandidateTransports` and `RankCandidates`
+  - [x] 5.2 Implement `CandidateTransports` and `RankCandidates`
     - Create `internal/core/transport/ranker.go`: candidates are enabled transports whose medium the peer is visible on; rank descending by expected goodput with ties broken by ascending name via `sort.SliceStable`
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 5.3 Implement the connection ladder
+  - [x] 5.3 Implement the connection ladder
     - Create `internal/core/transport/ladder.go` with `ConnectLadder`, `AttemptRecord`, and the tagged `LadderResult` (`Connected`, `AllFailed`, `NoCandidate`)
     - Attempt each candidate once in rank order using a per-attempt `context.WithTimeout` of 3 s, one attempt open at a time, no retries; on total failure return an attempt record per candidate with a non-empty reason; return `NoCandidate` for the empty list
     - _Requirements: 2.3, 2.4, 2.5, 2.6, 3.8_
 
-  - [ ]* 5.4 Write property test for candidate selection and ranking
+  - [x]* 5.4 Write property test for candidate selection and ranking
     - **Property 12: Candidate selection and ranking are deterministic and speed-ordered**
     - **Validates: Requirements 2.1, 2.2**
 
-  - [ ]* 5.5 Write property test for the connection ladder
+  - [x]* 5.5 Write property test for the connection ladder
     - **Property 13: The connection ladder attempts each candidate at most once and reports every attempt**
     - **Validates: Requirements 2.3, 2.4, 2.5, 2.6, 3.8**
 
