@@ -507,10 +507,19 @@ func (n *PeerNode) startSession(
 	n.bindings[s.Id] = b
 	n.bindMu.Unlock()
 
-	n.wg.Add(3)
+	// Four loops per Session: read, write, route what was read, and sample metrics. The router is
+	// what turns a decrypted Message into behaviour - acknowledging text, answering keepalives,
+	// applying clipboard content - so without it the reader would decrypt and discard.
+	//
+	// Keepalive runs as a fifth only once the far side is known to answer: a node whose peer
+	// predates the router would otherwise mark a perfectly good link unavailable on the third
+	// unanswered keepalive (Req 3.2).
+	n.wg.Add(5)
 	go func() { defer n.wg.Done(); n.readerLoop(sessionCtx, s, b) }()
 	go func() { defer n.wg.Done(); n.writerLoop(sessionCtx, s, b) }()
+	go func() { defer n.wg.Done(); n.routerLoop(sessionCtx, s, b) }()
 	go func() { defer n.wg.Done(); n.metricsLoop(sessionCtx, b) }()
+	go func() { defer n.wg.Done(); n.keepaliveLoop(sessionCtx, s, b) }()
 }
 
 // readerLoop reads frames, opens their payloads, and hands them to the Session's inbound channel.

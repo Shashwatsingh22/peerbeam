@@ -15,6 +15,7 @@ import (
 	"github.com/peerbeam/peerbeam/internal/core/discovery"
 	"github.com/peerbeam/peerbeam/internal/core/report"
 	"github.com/peerbeam/peerbeam/internal/core/session"
+	"github.com/peerbeam/peerbeam/internal/core/transfer"
 	"github.com/peerbeam/peerbeam/internal/core/transport"
 	"github.com/peerbeam/peerbeam/internal/core/trust"
 	"github.com/peerbeam/peerbeam/internal/platform/clip"
@@ -53,6 +54,8 @@ type Ports struct {
 	TrustStore trust.TrustStore
 	// Events receives event log entries (Req 13.5).
 	Events report.EventSink
+	// Display is where received text is presented (Req 5.3). Nil writes to standard output.
+	Display TextDisplay
 	// Clock is the time source. Nil means the real clock.
 	Clock clock.Clock
 }
@@ -86,6 +89,19 @@ type PeerNode struct {
 	bindMu   sync.Mutex
 	bindings map[session.SessionId]*binding
 
+	// pins holds the user's Transport pin per Peer (Req 2.10). Like the clipboard
+	// preferences, it lives on the node rather than on the Session because it outlives a
+	// reconnect.
+	pinMu sync.Mutex
+	pins  map[string]string
+
+	// clipParts buffers multi-part clipboard payloads until every index has arrived (Req 6.8).
+	// It is guarded by clipMu alongside the clipboard state it feeds.
+	clipParts map[string][][]byte
+
+	// display is where presented text goes (Req 5.3).
+	display TextDisplay
+
 	// unavailable records the Transports this host cannot offer, for the Req 12.3 and 12.8
 	// startup report.
 	unavailable []report.Failure
@@ -113,6 +129,25 @@ type binding struct {
 	metrics   *transport.TransportMetrics
 	reader    *codec.FrameReader
 	cancel    context.CancelFunc
+	// transfer is the sender-side progress for a Transfer running on this binding, or nil.
+	transfer *transfer.TransferProgress
+
+	// mu guards the counters below, which the reader, writer, router, and metrics loops all
+	// touch. The connection itself needs no lock: one reader and one writer own their
+	// directions.
+	mu sync.Mutex
+	// keepaliveSent maps a keepalive's sequence number to when it went out, so its
+	// acknowledgement becomes a round-trip measurement (Req 2.7).
+	keepaliveSent map[uint64]time.Time
+	delivered     int
+	lastDelivered uint64
+	// received holds inbound Transfer chunks by absolute byte offset (Req 3.5, 7.2).
+	received      map[int64][]byte
+	receivedBytes int64
+	writtenBytes  int64
+	// sampledBytes is the running total at the last goodput sample, so each sample reports the
+	// bytes moved in that second rather than since the Session began.
+	sampledBytes int64
 }
 
 // NewPeerNode builds a node from a config and a set of ports.
@@ -145,6 +180,9 @@ func NewPeerNode(config Config, ports Ports) (*PeerNode, error) {
 	if ports.TrustStore == nil {
 		ports.TrustStore = trust.NewMemoryTrustStore()
 	}
+	if ports.Display == nil {
+		ports.Display = NewWriterTextDisplay(os.Stdout)
+	}
 
 	node := &PeerNode{
 		config:     config,
@@ -155,6 +193,9 @@ func NewPeerNode(config Config, ports Ports) (*PeerNode, error) {
 		log:        report.NewEventLog(ports.Events),
 		clipboards: map[string]*clipboard.SessionClipboard{},
 		bindings:   map[session.SessionId]*binding{},
+		pins:       map[string]string{},
+		clipParts:  map[string][][]byte{},
+		display:    ports.Display,
 	}
 
 	node.pairing = trust.NewPairingService(ports.TrustStore, ports.Clock)
@@ -529,6 +570,9 @@ func (n *PeerNode) writeMessage(s *session.Session, b *binding, message session.
 		// just stops.
 		return false
 	}
+	// Counted for the goodput sample (Req 2.7). The frame is counted rather than the payload,
+	// because goodput is what crossed the wire.
+	b.noteWritten(len(encoded.Bytes))
 	return true
 }
 
@@ -549,6 +593,10 @@ func (n *PeerNode) keepaliveLoop(ctx context.Context, s *session.Session, b *bin
 				Sequence: sequence,
 				Control:  true, // keepalive must not queue behind a transfer
 			}
+			// Recorded before the send, so an acknowledgement that arrives immediately still
+			// finds its start time (Req 2.7).
+			b.noteKeepaliveSent(sequence, n.clk.Now())
+
 			select {
 			case s.Control <- message:
 			case <-ctx.Done():
@@ -574,12 +622,14 @@ func (n *PeerNode) metricsLoop(ctx context.Context, b *binding) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// The measured values come from the reader and writer byte counters once those
-			// are wired; until then the sampler keeps the cadence so the status line's
-			// pending state is driven by real absence rather than by a stopped loop.
-			if b.metrics.DueForSample() {
-				b.metrics.RecordGoodput(0)
-			}
+			// Req 2.7: one goodput sample per second, from the bytes actually moved in that
+			// second. takeThroughput resets the window, so a sample is a rate rather than a
+			// running total.
+			//
+			// RTT is not sampled here: it comes from the keepalive exchange, which has its
+			// own timer, and measuring it on this ticker would report the age of the last
+			// keepalive rather than a round trip.
+			b.metrics.RecordGoodput(b.takeThroughput())
 		}
 	}
 }
@@ -588,7 +638,7 @@ func (n *PeerNode) metricsLoop(ctx context.Context, b *binding) {
 // (Req 3.2, 3.3).
 func (n *PeerNode) markUnavailable(s *session.Session, b *binding) {
 	media := n.registry.MediaFor(s.Fingerprint)
-	ranked := transport.RankFor(n.ports.Transports, media)
+	ranked := transport.RankFor(n.UsableTransports(), media)
 
 	best := ""
 	var bestGoodput int64
@@ -600,12 +650,16 @@ func (n *PeerNode) markUnavailable(s *session.Session, b *binding) {
 		break
 	}
 
+	// Req 2.10 and 2.11: a pin overrides the ranking. Passing it in is what makes the pin mean
+	// something - DecideSwitch will not rebind a pinned Session, it will disconnect instead, and
+	// the reason names the pinned Transport.
 	decision := transport.DecideSwitch(transport.SwitchInputs{
 		ActiveTransportName:     b.transport.Name(),
 		ActiveExpectedGoodput:   b.transport.ExpectedGoodputBytesPerSecond(),
 		BestCandidateName:       best,
 		BestCandidateGoodput:    bestGoodput,
 		LastTransportChangeAt:   n.clk.Now(),
+		PinnedTransportName:     n.pinnedTransport(s.Fingerprint),
 		ActiveIsAvailable:       false,
 		ActiveUnavailableReason: "keepalive missed three times",
 		Now:                     n.clk.Now(),
@@ -760,4 +814,31 @@ func (n *PeerNode) PeerIsVisible(fingerprint string) bool {
 		}
 	}
 	return false
+}
+
+// rootContext is the node's root context, or context.Background when Start has not run.
+//
+// The fallback is not a convenience for tests. context.WithTimeout panics on a nil parent, so any
+// path that derives a context has to be safe before Start: a clipboard apply reached during
+// establishment, or a report written while the node is still coming up, would otherwise take the
+// process down over a missing parent rather than doing the work.
+func (n *PeerNode) rootContext() context.Context {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.ctx == nil {
+		return context.Background()
+	}
+	return n.ctx
+}
+
+// bindingFor returns a Session's live Transport binding, or nil.
+//
+// It exists for the status renderer and for tests that need to observe what a Session actually
+// received. Reading the binding is the only honest way to check inbound behaviour now that the router
+// consumes the inbound channel: a test that read the channel itself would be competing with the
+// router for the same messages and would see whichever won.
+func (n *PeerNode) bindingFor(id session.SessionId) *binding {
+	n.bindMu.Lock()
+	defer n.bindMu.Unlock()
+	return n.bindings[id]
 }

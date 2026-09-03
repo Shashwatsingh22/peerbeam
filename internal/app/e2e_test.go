@@ -36,6 +36,7 @@ type testNode struct {
 	bridge   *bt.InMemoryBluetoothBridge
 	clipPort *clip.MemoryClipboardPort
 	events   *report.MemoryEventSink
+	display  *MemoryTextDisplay
 	stateDir string
 	port     int
 	deviceID string
@@ -79,6 +80,7 @@ func newE2ENode(t *testing.T, set *fabricSet, name string) *testNode {
 
 	clipPort := clip.NewMemoryClipboardPort()
 	events := report.NewMemoryEventSink()
+	display := NewMemoryTextDisplay()
 
 	node, err := NewPeerNode(Config{DisplayName: name, StateDir: stateDir}, Ports{
 		Transports: []transport.Transport{lanTransport, btTransport},
@@ -87,6 +89,7 @@ func newE2ENode(t *testing.T, set *fabricSet, name string) *testNode {
 		KeyStore:   keyStore,
 		TrustStore: trustStore,
 		Events:     events,
+		Display:    display,
 		Clock:      clock.NewRealClock(),
 	})
 	if err != nil {
@@ -101,7 +104,8 @@ func newE2ENode(t *testing.T, set *fabricSet, name string) *testNode {
 
 	return &testNode{
 		node: node, identity: identity, lan: lanTransport, bt: btTransport, bridge: bridge,
-		clipPort: clipPort, events: events, stateDir: stateDir, port: port, deviceID: deviceID,
+		clipPort: clipPort, events: events, display: display,
+		stateDir: stateDir, port: port, deviceID: deviceID,
 	}
 }
 
@@ -215,21 +219,39 @@ func TestEndToEndPairConnectAndSendText(t *testing.T) {
 		t.Fatalf("sending: %s", report.Describe(sendFailure, "bob").String())
 	}
 
-	// Req 10.2: it arrives on Bob's inbound channel, decrypted.
-	select {
-	case inbound := <-bobSession.Inbound:
-		if inbound.Type != uint8(codec.MsgText) {
-			t.Fatalf("received message type %d, want text", inbound.Type)
-		}
-		if string(inbound.Payload) != message {
-			t.Fatalf("received %q, want %q", inbound.Payload, message)
-		}
-		if inbound.Sequence != sequence {
-			t.Fatalf("received sequence %d, want %d", inbound.Sequence, sequence)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("the text message never arrived on the other node")
+	// Req 5.3: it is decrypted, routed, and presented with the sender's name and the receipt
+	// timestamp. The display is checked rather than the inbound channel, because the router
+	// consumes that channel: reading it here would be competing with the production path for the
+	// same message.
+	shown := waitForText(t, bob.display, message)
+	if shown.Sequence != sequence {
+		t.Fatalf("presented sequence %d, want %d", shown.Sequence, sequence)
 	}
+	if shown.SenderName != "alice" {
+		t.Fatalf("presented sender %q, want alice", shown.SenderName)
+	}
+	if shown.ReceivedAt.IsZero() {
+		t.Fatal("presented with no receipt timestamp")
+	}
+
+	// Req 5.5: Alice's session records the delivery acknowledgement coming back.
+	aliceBinding := alice.node.bindingFor(result.Session.Id)
+	if aliceBinding == nil {
+		t.Fatal("alice has no binding for the session she opened")
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if count, _ := aliceBinding.Delivered(); count > 0 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if count, last := aliceBinding.Delivered(); count == 0 {
+		t.Fatal("the text was never acknowledged back to the sender")
+	} else if last != sequence {
+		t.Fatalf("the acknowledgement names sequence %d, want %d", last, sequence)
+	}
+	_ = bobSession
 
 	// Req 13.5: an event was logged for the establishment, with no payload in it.
 	entries := alice.events.Entries()
@@ -416,28 +438,13 @@ func TestEndToEndTransferOverLoopbackVerifiesTheDigest(t *testing.T) {
 		t.Fatalf("the plan is %d chunks; the test needs several", len(plan))
 	}
 
-	// Receive side: reassemble at the stated offsets.
-	assembled := make([]byte, fileSize)
-	received := 0
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for received < len(plan) {
-			select {
-			case message := <-bobSession.Inbound:
-				if message.Type != uint8(codec.MsgChunk) {
-					continue
-				}
-				// The chunk's absolute offset is what locates it, which is what makes a
-				// rebind at a different chunk size possible (Req 3.5).
-				offset := int64(message.Sequence) * int64(result.Transport.ChunkSizeBytes())
-				copy(assembled[offset:], message.Payload)
-				received++
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	// The router on Bob's side receives the chunks, records them at their absolute offsets, and
+	// acknowledges each one. The test reads what it recorded rather than the inbound channel,
+	// since the router owns that channel.
+	bobBinding := bob.node.bindingFor(bobSession.Id)
+	if bobBinding == nil {
+		t.Fatal("bob has no binding for the accepted session")
+	}
 
 	// Send side.
 	for _, ref := range plan {
@@ -453,10 +460,30 @@ func TestEndToEndTransferOverLoopbackVerifiesTheDigest(t *testing.T) {
 		}
 	}
 
-	select {
-	case <-done:
-	case <-time.After(25 * time.Second):
-		t.Fatalf("only %d of %d chunks arrived", received, len(plan))
+	// Wait for every chunk to land.
+	assembled := make([]byte, fileSize)
+	deadline := time.Now().Add(25 * time.Second)
+	var chunks map[int64][]byte
+	for time.Now().Before(deadline) {
+		chunks = bobBinding.ReceivedChunks()
+		if len(chunks) >= len(plan) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(chunks) < len(plan) {
+		t.Fatalf("only %d of %d chunks arrived", len(chunks), len(plan))
+	}
+	// The chunk's absolute offset is what locates it, which is what makes a rebind at a different
+	// chunk size possible (Req 3.5).
+	for offset, payload := range chunks {
+		copy(assembled[offset:], payload)
+	}
+
+	// Req 7.3: the sender's progress tracks the acknowledged bytes coming back.
+	aliceBinding := alice.node.bindingFor(result.Session.Id)
+	if aliceBinding == nil {
+		t.Fatal("alice has no binding")
 	}
 
 	// Req 7.4: the digest of the assembled content matches the offer.
@@ -834,3 +861,21 @@ func TestStateDirectoryHoldsOnlyWhatItShould(t *testing.T) {
 // concurrencyGuard keeps sync referenced; the scenarios above use goroutines through the node rather
 // than directly, which is the point.
 var _ = sync.Mutex{}
+
+// waitForText polls a display until the expected content is presented, since routing happens on the
+// Session's own goroutine.
+func waitForText(t *testing.T, display *MemoryTextDisplay, want string) InboundText {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, shown := range display.Shown() {
+			if shown.Content == want {
+				return shown
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("the text %q was never presented; the display holds %d messages",
+		want, len(display.Shown()))
+	return InboundText{}
+}

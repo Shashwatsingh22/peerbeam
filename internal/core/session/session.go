@@ -203,23 +203,25 @@ func (s *Session) Rebind(transportName string) {
 	s.activeTransportName = transportName
 }
 
-// close marks the Session terminal and releases its channels. Closing the channels
-// is what unblocks the Session's own goroutines; the registry has already dropped
-// the entry by the time this runs, so no other Session is affected (Req 4.3).
+// close marks the Session terminal. The registry has already dropped the entry by
+// the time this runs, so no other Session is affected (Req 4.3).
+//
+// It deliberately does not close the channels, and that is a correctness decision
+// rather than an omission. An earlier version closed all three to unblock the
+// Session's goroutines, which raced: the reader goroutine sends on Inbound, and
+// closing a channel while a producer may still be sending to it is a panic in
+// waiting - the race detector caught exactly that under the end-to-end tests.
+//
+// Nothing needs the close. Every per-Session loop selects on its context, and
+// cancelling that context is what stops them; the channels are then garbage
+// collected with the Session. A caller that closes a Session must cancel its
+// context, which is what app.closeSession does.
 func (s *Session) close() {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.state == StateClosed {
-		s.mu.Unlock()
 		return
 	}
 	s.state = StateClosed
 	s.activeTransportName = ""
-	s.mu.Unlock()
-
-	// The channels are closed outside the lock: closing one can wake a goroutine that
-	// immediately calls back in to read the state, and holding the lock across that
-	// would deadlock.
-	close(s.Inbound)
-	close(s.Outbound)
-	close(s.Control)
 }

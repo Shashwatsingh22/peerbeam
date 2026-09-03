@@ -322,11 +322,12 @@ func newTrustCommand(open nodeOpener) *cobra.Command {
 				return nil
 			}
 
-			// Req 9.8: the Session with that Peer closes.
+			// Req 9.8: the Session with that Peer closes. closeSession is used rather than
+			// the registry directly, so the Session's goroutines are cancelled and its
+			// connection released rather than left running against a peer that is no longer
+			// trusted.
 			if s := node.Sessions().Find(outcome.CloseSessionFor); s != nil {
-				node.Sessions().Close(s.Id, "trust removed by the user")
-				node.writeEvent(report.EventSessionRejected, s.DisplayName,
-					s.Fingerprint, "session closed: trust removed")
+				node.closeSession(s, "trust removed by the user")
 			}
 			fmt.Fprintf(cmd.OutOrStdout(),
 				"removed %s; it must pair again before it can connect\n", args[0])
@@ -394,9 +395,7 @@ func newDisconnectCommand(open nodeOpener) *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "no session with %s\n", args[0])
 				return nil
 			}
-			node.Sessions().Close(s.Id, "closed by the user")
-			node.writeEvent(report.EventSessionRejected, s.DisplayName, s.Fingerprint,
-				"session closed by the user")
+			node.closeSession(s, "closed by the user")
 			fmt.Fprintf(cmd.OutOrStdout(), "closed the session with %s\n", s.DisplayName)
 			return nil
 		},
@@ -421,20 +420,23 @@ to a disconnected state rather than switching.`),
 				return err
 			}
 			if clear {
-				fmt.Fprintf(cmd.OutOrStdout(), "released the transport pin for %s\n", args[0])
+				if err := node.SetPin(args[0], ""); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "released the transport pin for %s\n",
+					shortFingerprint(args[0]))
 				return nil
 			}
 			if len(args) < 2 {
 				return errors.New("name a transport to pin to, or pass --clear to release it")
 			}
 
-			name := args[1]
-			if name != transport.NameLAN && name != transport.NameBT {
-				return fmt.Errorf("unknown transport %q; use %s or %s",
-					name, transport.NameLAN, transport.NameBT)
+			if err := node.SetPin(args[0], args[1]); err != nil {
+				return err
 			}
-			_ = node
-			fmt.Fprintf(cmd.OutOrStdout(), "pinned %s to %s\n", shortFingerprint(args[0]), name)
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"pinned %s to %s; rank-based switching is off for that session\n",
+				shortFingerprint(args[0]), args[1])
 			return nil
 		},
 	}
@@ -484,30 +486,19 @@ func newSendCommand(open nodeOpener) *cobra.Command {
 				return fmt.Errorf("a group may hold at most 8 peers, not %d", len(args))
 			}
 
+			// Req 4.7: one outcome per selected Peer. SendText is the single send path, so
+			// a group send and a single send behave identically and neither can drift from
+			// the other.
 			for _, fingerprint := range args {
-				s := node.Sessions().FindActive(fingerprint)
-				if s == nil {
-					// Req 4.8: not delivered, and the Message is retained on that
-					// Session's queue.
-					if inactive := node.Sessions().Find(fingerprint); inactive != nil {
-						result := inactive.Queue.Submit(sessionMessageFor(inactive, message))
-						if result.Rejected != nil {
-							fmt.Fprintf(cmd.OutOrStdout(), "%s: not delivered (%s)\n",
-								shortFingerprint(fingerprint), result.Reason())
-							continue
-						}
-						fmt.Fprintf(cmd.OutOrStdout(),
-							"%s: not delivered (session not active; message queued)\n",
-							shortFingerprint(fingerprint))
-						continue
-					}
-					fmt.Fprintf(cmd.OutOrStdout(),
-						"%s: not delivered (no session)\n", shortFingerprint(fingerprint))
+				sequence, sendFailure := node.SendText(fingerprint, message)
+				if sendFailure != nil {
+					failure := report.Describe(sendFailure, shortFingerprint(fingerprint))
+					fmt.Fprintf(cmd.OutOrStdout(), "%s: not delivered (%s)\n",
+						shortFingerprint(fingerprint), failure.Reason)
 					continue
 				}
-				sequence := s.Sequence.NextSequence()
-				fmt.Fprintf(cmd.OutOrStdout(), "%s: queued as sequence %d\n",
-					s.DisplayName, sequence)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s: sent as sequence %d\n",
+					shortFingerprint(fingerprint), sequence)
 			}
 			return nil
 		},
