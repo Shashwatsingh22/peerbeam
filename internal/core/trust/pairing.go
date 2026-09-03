@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/peerbeam/peerbeam/internal/core/clock"
@@ -222,8 +223,17 @@ func (d AdmissionDecision) Reason() string {
 // It holds the in-flight attempts, the loaded entries, and the failed-state flags, so
 // there is exactly one place that can answer "is this Peer trusted right now".
 //
-// Not safe for concurrent use; internal/app serialises access from the command path.
+// Safe for concurrent use. This was originally single-goroutine, on the assumption that
+// all access came from one command path. That no longer holds: a peer dialing this node to
+// pair runs the responder exchange on an accept-loop goroutine, which records trust while
+// the interactive picker or a command may be reading it. The lock lives here because this
+// is the shared mutable state - the attempts map, the loaded view, and the failure flags -
+// and it is a leaf: nothing under it calls back out except the trust store and Clock.Now.
+//
+// The public methods take the lock; the private helpers confirm and resolve assume it is
+// already held.
 type PairingService struct {
+	mu    sync.Mutex
 	store TrustStore
 	clk   clock.Clock
 
@@ -264,6 +274,8 @@ func NewPairingService(store TrustStore, clk clock.Clock) *PairingService {
 // set up. A nil error with a zero key pair is treated as a failure, since a node with no
 // identity cannot authenticate anything.
 func (s *PairingService) SetIdentity(identity IdentityKeyPair, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err != nil {
 		s.keyStoreFailure = &StoreFailure{Step: "key store setup", Reason: err.Error()}
 		return
@@ -280,12 +292,18 @@ func (s *PairingService) SetIdentity(identity IdentityKeyPair, err error) {
 }
 
 // Identity is this node's key pair.
-func (s *PairingService) Identity() IdentityKeyPair { return s.identity }
+func (s *PairingService) Identity() IdentityKeyPair {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.identity
+}
 
 // Load reads the trust store into memory. On failure it records the Req 9.11 state and
 // leaves the previously loaded view alone: the stored content is not modified, and every
 // Session request is rejected until a later Load succeeds.
 func (s *PairingService) Load() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	peers, err := s.store.Load()
 	if err != nil {
 		s.trustStoreFailure = &StoreFailure{Step: "trust store load", Reason: err.Error()}
@@ -315,12 +333,23 @@ func (s *PairingService) Load() error {
 }
 
 // Ready reports whether the trust store has been loaded successfully.
-func (s *PairingService) Ready() bool { return s.ready }
+func (s *PairingService) Ready() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ready
+}
 
 // StoreFailure returns the active failure, or nil. The key store is reported before the
 // trust store: without an identity there is nothing to authenticate with, so that is the
 // step the user has to fix first.
 func (s *PairingService) StoreFailure() *StoreFailure {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.storeFailure()
+}
+
+// storeFailure is the unlocked form, for callers that already hold the lock.
+func (s *PairingService) storeFailure() *StoreFailure {
 	if s.keyStoreFailure != nil {
 		return s.keyStoreFailure
 	}
@@ -329,6 +358,8 @@ func (s *PairingService) StoreFailure() *StoreFailure {
 
 // Trusted returns the stored entry for a fingerprint, and false when there is none.
 func (s *PairingService) Trusted(fingerprint string) (TrustedPeer, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, found := s.loaded[fingerprint]
 	if !found {
 		return TrustedPeer{}, false
@@ -338,6 +369,8 @@ func (s *PairingService) Trusted(fingerprint string) (TrustedPeer, bool) {
 
 // TrustedPeers lists every entry, ordered by fingerprint.
 func (s *PairingService) TrustedPeers() []TrustedPeer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	out := make([]TrustedPeer, 0, len(s.loaded))
 	for _, p := range s.loaded {
 		out = append(out, p.Clone())
@@ -350,7 +383,9 @@ func (s *PairingService) TrustedPeers() []TrustedPeer {
 // (Req 9.3). A second attempt with the same Peer replaces the first, since the code from
 // the earlier attempt is no longer the one on screen.
 func (s *PairingService) BeginPairing(receivedKey []byte, peerDisplayName string) (*PairingAttempt, error) {
-	if failure := s.StoreFailure(); failure != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if failure := s.storeFailure(); failure != nil {
 		return nil, failure
 	}
 	if err := CheckPublicKey(receivedKey); err != nil {
@@ -376,6 +411,8 @@ func (s *PairingService) BeginPairing(receivedKey []byte, peerDisplayName string
 
 // Attempt returns the in-flight attempt for a fingerprint, or nil.
 func (s *PairingService) Attempt(fingerprint string) *PairingAttempt {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.attempts[fingerprint]
 }
 
@@ -383,14 +420,19 @@ func (s *PairingService) Attempt(fingerprint string) *PairingAttempt {
 // records the same from the other node. Pairing completes only when both have confirmed
 // inside the window (Req 9.4).
 func (s *PairingService) ConfirmLocal(fingerprint string) PairingOutcome {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.confirm(fingerprint, true, false)
 }
 
 // ConfirmPeer records the Peer's confirmation.
 func (s *PairingService) ConfirmPeer(fingerprint string) PairingOutcome {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.confirm(fingerprint, false, true)
 }
 
+// confirm assumes the lock is held.
 func (s *PairingService) confirm(fingerprint string, local, peer bool) PairingOutcome {
 	attempt := s.attempts[fingerprint]
 	if attempt == nil {
@@ -411,6 +453,8 @@ func (s *PairingService) confirm(fingerprint string, local, peer bool) PairingOu
 // ReportMismatch records that a user said the codes differ, which abandons the attempt
 // (Req 9.5).
 func (s *PairingService) ReportMismatch(fingerprint string) PairingOutcome {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	attempt := s.attempts[fingerprint]
 	if attempt == nil {
 		return PairingOutcome{Failed: &PairingFailure{
@@ -425,6 +469,8 @@ func (s *PairingService) ReportMismatch(fingerprint string) PairingOutcome {
 // ExpirePairings abandons attempts whose 120-second window has closed and returns one
 // failure per abandoned attempt (Req 9.5). It is called from the pairing timer.
 func (s *PairingService) ExpirePairings() []*PairingFailure {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var failures []*PairingFailure
 	now := s.clk.Now()
 	for fingerprint, attempt := range s.attempts {
@@ -514,7 +560,9 @@ func (s *PairingService) resolve(attempt *PairingAttempt) PairingOutcome {
 // Nothing here writes to the store, so Req 9.7's "retain the stored public key
 // unchanged" holds by construction rather than by discipline.
 func (s *PairingService) Admit(fingerprint string, presentedKey []byte) AdmissionDecision {
-	if failure := s.StoreFailure(); failure != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if failure := s.storeFailure(); failure != nil {
 		return AdmissionDecision{StoreFailed: failure}
 	}
 	if !s.ready {
@@ -561,6 +609,8 @@ type RemovalOutcome struct {
 // It also drops any in-flight pairing attempt with that Peer, so a removal during
 // pairing cannot complete a moment later and re-add the key the user just deleted.
 func (s *PairingService) RemoveTrustedPeer(fingerprint string) RemovalOutcome {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	removed, err := s.store.Remove(fingerprint)
 	if err != nil {
 		return RemovalOutcome{Err: err}

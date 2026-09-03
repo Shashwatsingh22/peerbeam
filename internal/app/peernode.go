@@ -25,6 +25,9 @@ import (
 // ProtocolVersion is the version this build speaks, published in the announcement (Req 1.1).
 const ProtocolVersion = codec.ProtocolVersion
 
+// errInboundConfirmerAfterStart is returned when the inbound pairing confirmer is set too late.
+var errInboundConfirmerAfterStart = errors.New("the inbound confirmer cannot be set after the node has started")
+
 // PeerDiscoveryWait is how long `peers` holds for a first observation on a freshly started node
 // before rendering (Req 5.5).
 //
@@ -114,6 +117,10 @@ type PeerNode struct {
 
 	// display is where presented text goes (Req 5.3).
 	display TextDisplay
+
+	// inboundConfirmer is how the responder side of pairing asks its user to confirm a code when
+	// a peer dials this node to pair (Req 9.9). Nil means decline, which is the safe default.
+	inboundConfirmer PairConfirmer
 
 	// unavailable records the Transports this host cannot offer, for the Req 12.3 and 12.8
 	// startup report.
@@ -543,33 +550,15 @@ func (n *PeerNode) expiryLoop(ctx context.Context) {
 
 // onInbound handles a connection a Transport accepted (Req 10.1, 10.8, 10.9).
 //
-// It runs the responder half of the handshake and either admits a Session or closes the connection
-// with a report. Nothing is admitted before the exchange completes, which is what Req 10.9 requires
-// and what AcceptInbound enforces through the handshake gate.
+// It runs each accepted connection on its own goroutine under the node's wait group, so Stop joins
+// it, and hands the connection to handleInbound, which routes it to pairing or the session
+// handshake by its first frame type (Req 9.1, 10.1, 10.8, 10.9). Nothing is admitted before the
+// relevant exchange completes.
 func (n *PeerNode) onInbound(conn transport.TransportConnection) {
-	// A node whose trust store failed cannot decide anything about this peer, so it closes the
-	// connection rather than holding it open (Req 9.11).
-	if failure := n.pairing.StoreFailure(); failure != nil {
-		n.reportFailure(&report.TrustStoreFailed{Reason: failure.Reason}, n.config.DisplayName)
-		_ = conn.Close()
-		return
-	}
-
 	n.wg.Add(1)
 	go func() {
 		defer n.wg.Done()
-
-		// The handshake carries its own 5-second deadline (Req 10.8); the root context is
-		// what stops it if the node is shutting down.
-		result, failure := n.AcceptInbound(n.ctx, conn)
-		if failure != nil {
-			// AcceptInbound closed the connection already. Reporting is all that is left,
-			// and it goes through the same Describe mapping as every other failure.
-			n.reportFailure(failure, report.UnknownPeer)
-			return
-		}
-		n.reportTransportChange(result.Session, "", result.Transport.Name(),
-			report.ReasonHigherRankedAvailable)
+		n.handleInbound(conn)
 	}()
 }
 

@@ -17,29 +17,38 @@ peerbeam send <fingerprint> --text "hi" # then just use it
 
 ## Project status
 
-The protocol core is complete and heavily tested. Some of the top-level plumbing is not.
+The protocol core is complete and heavily tested, and the running binary now discovers peers,
+starts a live node behind the CLI, pairs over the wire, and holds an interactive chat. Bluetooth
+works on macOS through a native shim you build once.
 
-**Working as libraries, with tests:** peer discovery, the encrypted session handshake, session
-admission and the 8-session limit, text messaging with acknowledgement and ordering, clipboard
-apply and echo suppression, transport ranking and failover, the trust store, status reporting, and
-the event log.
-An end-to-end suite runs two nodes in one process over a loopback transport and moves real text
-and file chunks through the production code path, including rebinding and eight concurrent
-sessions. Those tests seed both trust stores directly, which is precisely the gap below.
+**Working, with tests:** peer discovery on LAN and Bluetooth, presence wired into a running node,
+the encrypted session handshake, session admission and the 8-session limit, text messaging with
+acknowledgement and ordering, clipboard apply and echo suppression, transport ranking and failover,
+the trust store, status reporting, the event log, the outbound pairing wire exchange, and the
+interactive session (pick a peer, connect, chat).
 
-**Not built yet**, and worth knowing before you try it on two real machines:
+An end-to-end suite runs two nodes in one process over a loopback transport and moves real text and
+file chunks through the production code path, including rebinding and eight concurrent sessions.
+Property tests cover 55 named correctness properties.
+
+Pairing works in both directions on the wire — the dialing side and the receiving side — and both
+are tested end to end between two nodes in one process. The receiving node confirms through a
+`PairConfirmer`; a node with none wired declines rather than trusting silently.
+
+**Verified on one machine, not yet on two:** discovery, pairing (both directions), connection, and
+chat have been run between two processes on one host over LAN loopback, and the macOS Bluetooth
+shim advertises, publishes an L2CAP channel, and reports available on a real radio. Two physical
+machines over Bluetooth have not been tested here — that needs two radios in range and is a manual
+step.
+
+**Not built yet**, and worth knowing before you rely on it:
 
 | Gap | Effect |
 | --- | --- |
-| The pairing wire exchange | `peerbeam pair` cannot complete a first pairing between two machines. The trust model, code derivation, and confirmation logic are all done and tested; the exchange that carries the peer's public key over a connection is not. |
+| The receiving user's interactive prompt | The wire exchange and the confirmer hook are done, but the interactive session does not yet surface an inbound pairing prompt to a user sitting at the peer list, so it declines an inbound offer. Pair by dialing from the machine you are at, which works. |
 | The transfer sender loop | `file send` reports a real chunk plan and stops. `file resume` and `file cancel` print confirmations without driving a transfer. The chunk planner, progress tracking, resend ceiling, and integrity check are all implemented and tested. |
-| The Bluetooth native shim | `shim/macos`, `shim/windows`, and `shim/linux` contain no native code, so Bluetooth reports itself unavailable on every real host and nodes run LAN-only. This is a supported, reported startup state — not a crash. |
-| The CLI never starts the node | Every command builds a node, queries it, and exits without calling `PeerNode.Start`, so no listener accepts inbound connections and nothing ages out of the peer list. |
-| Discovery is not wired into the node | `internal/platform/lan/beacon.go` implements and tests announcement publishing and receiving, but `internal/app` never constructs a beacon and `Ports` has no field for one. `peerbeam peers` therefore always prints `(no peers visible)`. |
-
-So today Peerbeam is a tested protocol implementation with a CLI shell over it. The command surface
-is complete and its arguments, validation, and failure reporting are real, but the two gaps above
-mean a single binary does not yet find or accept peers on a live network.
+| The Windows and Linux Bluetooth shims | `shim/windows` and `shim/linux` contain no native code, so Bluetooth reports itself unavailable there and those hosts run LAN-only. macOS has a working shim. |
+| A single-file deliverable | The macOS Bluetooth shim is a separate helper executable, not linked into the binary, so Bluetooth needs `make shim` in addition to the main build. Linking it in is future work. |
 
 ---
 
@@ -85,9 +94,51 @@ make release        # writes dist/peerbeam-<os>-<arch>, checks each against the 
 
 Each artifact is a single self-contained executable of roughly 6 MiB and needs nothing but itself.
 
+### Bluetooth on macOS
+
+Bluetooth needs a small native helper, built once from source in this repo:
+
+```sh
+make shim           # builds ~/.peerbeam/bin/peerbeam-bt-shim
+```
+
+Then grant your terminal Bluetooth access, because a command-line tool inherits that permission
+from whatever launched it:
+
+> System Settings → Privacy & Security → Bluetooth → enable your terminal
+
+Without the shim, or without that grant, Bluetooth reports itself unavailable at startup and the
+node runs LAN-only. Neither is an error. See [`shim/macos/README.md`](shim/macos/README.md) for the
+details and for why it uses CoreBluetooth rather than an OS pairing.
+
 ---
 
 ## Getting started
+
+The quickest way in is the interactive session: run the binary with no arguments.
+
+```sh
+peerbeam
+```
+
+```
+discovering peers...
+peers:
+  1  desktop           3f8a1c04e2b7d915...  LAN,Bluetooth  trusted
+  2  work-mac          9b2e7710c4a6f082...  Bluetooth      needs pairing
+select a peer [number, r to rescan, q to quit]: 1
+connecting to desktop...
+connection established with desktop over LAN_Transport
+chatting with desktop. type a message, or /leave to return to the peer list.
+you: are you seeing this?
+desktop: loud and clear
+```
+
+Pick a number to connect and chat. Type `/leave` to go back to the list, `r` to rescan, `q` to
+quit. If the peer is not yet paired, you are shown a 6-digit code to compare before the chat opens.
+
+Everything the interactive session does is also a discrete command, for scripting or one-off use.
+The rest of this section covers those.
 
 ### 1. See who is around
 
@@ -121,8 +172,9 @@ peerbeam pair 3f8a1c04e2b7d915... --reject  # if they do not
 The code is never sent over the network. Both machines derive it independently from the two public
 keys, so an attacker who controls the network cannot make them agree. It is valid for 2 minutes.
 
-> **Note:** the wire half of this exchange is not implemented yet, so a first pairing between two
-> real machines cannot complete. See [Project status](#project-status).
+> **Note:** the wire exchange works in both directions and is tested. What is not yet wired is the
+> interactive prompt on the *receiving* machine, so pair by dialing from the machine you are sitting
+> at. See [Project status](#project-status).
 
 ### 3. Connect and use it
 
@@ -203,6 +255,7 @@ refuses and says so. Active sessions are untouched either way.
 
 | Command | What it does |
 | --- | --- |
+| _(no command)_ | Start the interactive session: pick a peer, connect, chat |
 | `peers` | List visible peers with their media and protocol support |
 | `peers add <host> <port>` | Add a peer by address, bypassing discovery |
 | `pair <fingerprint>` | Show the verification code; `--confirm` / `--reject` to decide |
@@ -386,7 +439,7 @@ internal/
     share/               macOS share sheet, build-tagged stub elsewhere
     store/               identity key file, trust store, per-OS permissions
   app/                   wiring: node lifecycle, session loops, router, CLI, status renderer
-shim/                    per-OS native Bluetooth code (not yet implemented)
+shim/                    per-OS native Bluetooth helper (macOS built; Windows/Linux stubs)
 .kiro/specs/peerbeam/    requirements, design, and task plan this was built from
 ```
 
@@ -444,6 +497,7 @@ cannot lose your paired keys.
 ```sh
 make build       # compile for this machine, leaving ./peerbeam
 make install     # build onto your PATH, so a bare `peerbeam` works
+make shim        # build the macOS Bluetooth helper into ~/.peerbeam/bin
 make test        # run every test
 make test-race   # run every test under the race detector
 make vet         # go vet for the host and all five release targets
@@ -457,9 +511,10 @@ make help
 
 ### Testing approach
 
-Roughly 15,000 lines of production code and 14,000 of tests. The design names 41 correctness
-properties and all 41 are covered with [rapid](https://pgregory.net/rapid) property tests, each
-running at least 100 generated cases, alongside fixed-input tests for the boundaries random
+Roughly 15,000 lines of production code and 14,000 of tests. The design names 55 correctness
+properties — 41 for the protocol core, 14 more for Bluetooth, presence, pairing, and the
+interactive session — and all are covered with [rapid](https://pgregory.net/rapid) property tests,
+each running at least 100 generated cases, alongside fixed-input tests for the boundaries random
 generation rarely hits.
 
 The properties are the point. A few examples of what they actually catch:

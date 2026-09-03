@@ -176,13 +176,14 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
   - _Requirements: 11.1, 11.2_
 
 - [ ] 10. Two-machine verification and documentation
-  - [ ] 10.1 Verify across two machines
+  - [ ] 10.1 Verify across two machines — BLOCKED on a second physical machine with a Bluetooth radio
+    - The code this depends on is done: inbound pairing is wired into the accept path and verified end to end between two nodes in one process over loopback (TestEndToEndInboundPairingOverLoopback), including the decline-by-default safe path. The remaining step is running two physical machines, which needs hardware not available here.
     - Build and install the shim on both; grant Bluetooth to the terminal on both
     - With both off any shared network, confirm each appears in the other's Peer list, that pairing completes with matching codes on both, that the Session establishes over BT_Transport, and that Messages travel both ways
     - Confirm a rejected code records no trust, and that an expired code is reported
     - Measure goodput and round-trip time on the Bluetooth link and record them against the ranking figure
     - _Requirements: 1.3, 4.1, 7.2, 8.1, 8.2, 9.3, 9.4, 9.5, 9.6_
-  - [ ] 10.2 Update the README
+  - [x] 10.2 Update the README
     - Document the shim build, the terminal Bluetooth grant, and the interactive flow
     - Correct the status table: discovery and the interactive session now work in the assembled binary
     - Keep the remaining gaps honest: the Transfer sender loop, the Windows and Linux shims, and the two-file deliverable

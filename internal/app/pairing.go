@@ -98,14 +98,20 @@ func (n *PeerNode) runPairing(
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	// 1. Offers. This node sends first regardless of role; the peer's runPairing does the same,
-	// and the reads below tolerate the two crossing on the wire.
-	if failure := n.writePairingOffer(conn); failure != nil {
-		return nil, failure
-	}
+	// 1. Offers. Both sides send first and then read, so the write is done concurrently with the
+	// read: on a strictly synchronous transport - which net.Pipe and, in the limit, a Bluetooth
+	// link with no buffer are - two simultaneous writes would deadlock, each blocked until the
+	// other reads. Writing in the background lets each side's read drain the peer's offer while
+	// its own offer is still in flight. A real TCP socket buffers and would not deadlock, but the
+	// exchange must not depend on that.
+	writeDone := n.writeConcurrently(func() report.AppError { return n.writePairingOffer(conn) })
 	offer, failure := n.readPairingOffer(ctx, conn, deadline)
 	if failure != nil {
+		<-writeDone
 		return nil, failure
+	}
+	if wErr := <-writeDone; wErr != nil {
+		return nil, wErr
 	}
 
 	// 2. A contradicting key is a mismatch, not a new pairing (Req 9.7). Admit compares the
@@ -141,13 +147,20 @@ func (n *PeerNode) runPairing(
 	}
 
 	// 4. Exchange decisions. This node's goes out even on a local rejection, so the peer learns
-	// the pairing is off rather than waiting out the window.
-	if failure := n.writePairingDecision(conn, localDecision); failure != nil {
-		return nil, failure
-	}
+	// the pairing is off rather than waiting out the window. Written concurrently with the read
+	// for the same synchronous-transport reason as the offers.
+	decisionWritten := n.writeConcurrently(func() report.AppError {
+		return n.writePairingDecision(conn, localDecision)
+	})
 	peerDecision, failure := n.readPairingDecision(ctx, conn, deadline)
 	if failure != nil {
+		<-decisionWritten
 		return nil, failure
+	}
+	// The decision send has been read by the peer by now, but join its goroutine so a write
+	// error is not lost and the goroutine does not outlive the exchange.
+	if wErr := <-decisionWritten; wErr != nil {
+		return nil, wErr
 	}
 
 	// A local rejection is the decisive one; report it as this side's mismatch (Req 9.5).
@@ -189,6 +202,17 @@ func (n *PeerNode) runPairing(
 			Reason:      "pairing did not complete after both confirmations",
 		}
 	}
+}
+
+// writeConcurrently runs a frame write on its own goroutine and returns a channel that yields its
+// result once. It exists so a send can overlap the matching receive: the pairing exchange is
+// symmetric, and on a transport with no send buffer two simultaneous blocking writes would
+// deadlock. The caller must receive from the returned channel exactly once, so the goroutine is
+// always joined.
+func (n *PeerNode) writeConcurrently(write func() report.AppError) <-chan report.AppError {
+	done := make(chan report.AppError, 1)
+	go func() { done <- write() }()
+	return done
 }
 
 // pairingOffer is a decoded PairingOffer.
