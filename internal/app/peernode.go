@@ -389,6 +389,20 @@ func (n *PeerNode) Share() share.SharePort { return n.ports.Share }
 // DisplayName is this node's name.
 func (n *PeerNode) DisplayName() string { return n.config.DisplayName }
 
+// SetDisplay replaces where received text is presented (Req 5.3). It must be called before Start,
+// because the router reads the display from its own goroutine once running and swapping it under a
+// live reader would race. The interactive session uses it to route inbound text into its chat view.
+func (n *PeerNode) SetDisplay(display TextDisplay) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.started {
+		return errors.New("the display cannot be changed after the node has started")
+	}
+	n.display = display
+	n.ports.Display = display
+	return nil
+}
+
 // SetListenPort records the port actually bound, so the announcement publishes the real one.
 func (n *PeerNode) SetListenPort(port int) {
 	n.mu.Lock()

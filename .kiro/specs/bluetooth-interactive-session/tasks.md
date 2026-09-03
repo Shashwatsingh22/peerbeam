@@ -123,25 +123,25 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
     - Property 51: any other message type before trust leaves all state untouched
     - _Requirements: 9.2, 9.4, 9.5, 9.7, 9.8_
 
-- [ ] 7. Build the Interactive_Session
-  - [ ] 7.1 Implement the state machine
+- [x] 7. Build the Interactive_Session
+  - [x] 7.1 Implement the state machine
     - Create `internal/app/interactive.go` with the Discovering, PeerPicker, Connecting, Pairing, and ChatView states
     - Take input through an interface and write to an `io.Writer`, so the machine is testable with no terminal
     - Return to the PeerPicker on every terminal edge; reach exit only on an explicit quit
     - _Requirements: 6.1, 7.3, 8.7, 8.8_
-  - [ ] 7.2 Implement the Peer_Picker
+  - [x] 7.2 Implement the Peer_Picker
     - Display a selection index, display name, abbreviated fingerprint, and media per Peer, marking which are already trusted
     - Snapshot the list on display and resolve a selection to a fingerprint, so an expiry between display and selection cannot connect to the wrong Peer
     - Say discovery is in progress when the list is empty; offer explicit rescan and quit
     - Reject an invalid selection and redisplay without exiting
     - _Requirements: 6.1, 6.2, 6.3, 6.5, 6.6, 6.7_
-  - [ ] 7.3 Implement connection with progress
+  - [x] 7.3 Implement connection with progress
     - Name each Transport as it is attempted, in ranked order
     - On success, state that the connection is established and name the Peer and active Transport before accepting input
     - On total failure, report every Transport tried and why, then return to the picker
     - Enter the Pairing state first when the Peer is not trusted
     - _Requirements: 6.4, 7.1, 7.2, 7.3, 7.4_
-  - [ ] 7.4 Implement the Chat_View
+  - [x] 7.4 Implement the Chat_View
     - Send each submitted line as a text Message; send nothing for an empty line
     - Supply a `TextDisplay` so inbound Messages arrive through the existing router path
     - Distinguish sent from received lines and attribute received ones to the sender's display name
@@ -149,12 +149,12 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
     - Repaint so an arriving Message does not corrupt a partially typed line
     - Surface transport changes and the disconnected state as inline notices, saying that Messages are being queued
     - _Requirements: 7.5, 7.6, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.9_
-  - [ ] 7.5 Make it the default command and report through the single mapping
+  - [x] 7.5 Make it the default command and report through the single mapping
     - Run the Interactive_Session when the binary is invoked with no subcommand
     - Render every failure through `report.Describe`; show the startup report once at entry
     - Use the all-or-nothing status rule wherever status is displayed
     - _Requirements: 10.1, 10.3, 10.4_
-  - [ ] 7.6* Property tests for the interactive layer
+  - [x] 7.6* Property tests for the interactive layer
     - Property 52: a selection resolves to the Peer displayed at that index, or reports it is gone; never a different Peer
     - Property 53: an arriving Message leaves the typed buffer unchanged
     - Property 54: every terminal edge reaches the PeerPicker; only quit reaches exit

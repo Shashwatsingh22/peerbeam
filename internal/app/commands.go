@@ -135,6 +135,13 @@ Every capability is a command; there is no graphical interface.`),
 	// localOpener builds a node without starting it, for commands that touch only local state.
 	localOpener := func(cmd *cobra.Command) (*PeerNode, error) { return build(cmd) }
 
+	// The interactive session is the default action, run when the binary is invoked with no
+	// subcommand. It builds its own node so it can install a chat display before Start, which
+	// the shared openers cannot do.
+	root.RunE = func(cmd *cobra.Command, args []string) error {
+		return runInteractive(cmd, build)
+	}
+
 	root.AddCommand(
 		newPeersCommand(liveOpener),
 		newPairCommand(liveOpener),
@@ -150,6 +157,27 @@ Every capability is a command; there is no graphical interface.`),
 		newAirDropCommand(localOpener),
 	)
 	return root
+}
+
+// runInteractive builds a node with a chat display, starts it, and runs the picker-and-chat loop
+// (Req 6, 7, 8). It is the default action of the root command.
+func runInteractive(cmd *cobra.Command, build func(*cobra.Command) (*PeerNode, error)) error {
+	node, err := build(cmd)
+	if err != nil {
+		return err
+	}
+	chat := newChatDisplay()
+	if err := node.SetDisplay(chat); err != nil {
+		return err
+	}
+	if err := node.Start(cmd.Context()); err != nil {
+		node.Stop()
+		return err
+	}
+	defer node.Stop()
+
+	session := NewInteractiveSession(node, chat, cmd.InOrStdin(), cmd.OutOrStdout())
+	return session.Run(cmd.Context())
 }
 
 // chainPostRun composes two cobra PostRunE hooks, so registering a stop does not clobber a hook a
