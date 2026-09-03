@@ -67,8 +67,21 @@ let peerbeamPSMUUID = CBUUID(string: "50454552-4245-414D-0000-000000000003")
 /// Diagnostics go to stderr. The Go side wires the shim's stderr to its own, so a native failure
 /// is visible rather than swallowed. stdout carries frames only - a stray print there would
 /// desynchronise the protocol for good.
+///
+/// Routine chatter - "advertising", "published psm" - is quiet by default, because it lands in the
+/// user's terminal in the middle of the interactive picker and reads like a fault when nothing is
+/// wrong. Set PEERBEAM_BT_DEBUG=1 to see it. Genuine problems always log, since those the user
+/// needs to see.
+let debugLoggingEnabled = ProcessInfo.processInfo.environment["PEERBEAM_BT_DEBUG"] == "1"
+
 func log(_ message: String) {
     FileHandle.standardError.write("peerbeam-bt-shim: \(message)\n".data(using: .utf8)!)
+}
+
+func debugLog(_ message: String) {
+    if debugLoggingEnabled {
+        log(message)
+    }
 }
 
 // MARK: - Frame writing
@@ -343,7 +356,25 @@ final class BluetoothShim: NSObject {
         reportedAvailability = usable
         FrameWriter.shared.send(.available, payload: Data([usable ? 1 : 0]))
         if !usable {
-            log("bluetooth is not available: central=\(stateName(centralManager?.state)) peripheral=\(stateName(peripheralManager?.state))")
+            // Only announce a genuinely bad state. .unknown and .resetting are the transient
+            // states a manager passes through while powering on, and reporting "not available"
+            // for those prints a false alarm into the user's terminal a moment before the radio
+            // comes up. A definitively bad state - off, unauthorized, unsupported - is worth
+            // saying, because it will not resolve on its own.
+            if isDefinitivelyUnavailable(centralManager?.state) || isDefinitivelyUnavailable(peripheralManager?.state) {
+                log("bluetooth is not available: central=\(stateName(centralManager?.state)) peripheral=\(stateName(peripheralManager?.state))")
+            }
+        }
+    }
+
+    // isDefinitivelyUnavailable reports whether a manager state is one that will not resolve into
+    // poweredOn on its own, as opposed to the transient .unknown/.resetting seen during startup.
+    private func isDefinitivelyUnavailable(_ state: CBManagerState?) -> Bool {
+        switch state {
+        case .some(.poweredOff), .some(.unauthorized), .some(.unsupported):
+            return true
+        default:
+            return false
         }
     }
 
@@ -395,13 +426,42 @@ final class BluetoothShim: NSObject {
         if peripheralManager.isAdvertising {
             peripheralManager.stopAdvertising()
         }
-        // Only the service UUID and a short name fit an advertisement; the record itself is
-        // served over GATT. macOS ignores service data and manufacturer data in
-        // startAdvertising, so there is no point putting the fingerprint here.
+        // The service UUID is what a scanner filters on; the local name is what it can show the
+        // user before it has connected and read the full record over GATT. Putting the display
+        // name here means a discovered peer has a readable name straight away rather than a
+        // placeholder until the GATT read completes. The full record - fingerprint, port, version
+        // - still travels over GATT; only the name is duplicated here, and only because the
+        // advertisement has room for a short string and nothing else useful.
         peripheralManager.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [peerbeamServiceUUID],
-            CBAdvertisementDataLocalNameKey: "peerbeam",
+            CBAdvertisementDataLocalNameKey: advertisedLocalName(),
         ])
+    }
+
+    // advertisedLocalName pulls the display name out of the announcement record for the
+    // advertisement. It falls back to "peerbeam" when the record has no usable name, so the
+    // advertisement is never empty. A BLE local name is short, so an over-long name is truncated
+    // to what fits rather than risking the advertisement being rejected.
+    private func advertisedLocalName() -> String {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: advertisedRecord) as? [String: Any],
+            let name = object["displayName"] as? String,
+            !name.isEmpty
+        else {
+            return "peerbeam"
+        }
+        // A classic BLE advertisement carries about 31 bytes total; the service UUID takes most of
+        // it, so keep the name well under what remains. macOS moves an over-long name to the scan
+        // response automatically, but trimming keeps behaviour predictable.
+        let maxNameBytes = 20
+        if name.utf8.count <= maxNameBytes {
+            return name
+        }
+        var trimmed = name
+        while trimmed.utf8.count > maxNameBytes && !trimmed.isEmpty {
+            trimmed.removeLast()
+        }
+        return trimmed
     }
 
     // MARK: Central role
@@ -500,7 +560,7 @@ extension BluetoothShim: CBPeripheralManagerDelegate {
             return
         }
         publishedPSM = PSM
-        log("published l2cap psm \(PSM)")
+        debugLog("published l2cap psm \(PSM)")
         startAdvertisingIfReady()
     }
 
@@ -517,7 +577,7 @@ extension BluetoothShim: CBPeripheralManagerDelegate {
             log("advertising failed: \(error.localizedDescription)")
             return
         }
-        log("advertising \(peerbeamServiceUUID.uuidString)")
+        debugLog("advertising \(peerbeamServiceUUID.uuidString)")
     }
 
     /// Serves the record and the PSM. The offset handling is required: a 2048-byte record does not

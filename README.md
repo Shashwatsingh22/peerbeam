@@ -137,6 +137,16 @@ desktop: loud and clear
 Pick a number to connect and chat. Type `/leave` to go back to the list, `r` to rescan, `q` to
 quit. If the peer is not yet paired, you are shown a 6-digit code to compare before the chat opens.
 
+The name in the list is the other machine's display name — its `--name`, or its hostname if none
+was given, so set yours with `peerbeam --name "my machine"`. On Bluetooth that name rides in the
+advertisement, so a discovered peer reads as a name rather than an identifier straight away; the
+long hex string beside it is the fingerprint, its cryptographic identity, which is what pairing
+verifies. The `50454552-4245-414D-...` service UUID you may see in Bluetooth logs is not a name — it
+is the fixed tag every Peerbeam node advertises so the two find each other, like a well-known port.
+
+The Bluetooth helper is quiet by default. Set `PEERBEAM_BT_DEBUG=1` to see its advertise and
+channel diagnostics on stderr while troubleshooting.
+
 Everything the interactive session does is also a discrete command, for scripting or one-off use.
 The rest of this section covers those.
 
