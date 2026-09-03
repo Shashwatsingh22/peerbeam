@@ -25,13 +25,32 @@ TARGETS := \
 	linux/amd64 \
 	linux/arm64
 
-.PHONY: all build test test-race vet fmt check release clean smoke help
+.PHONY: all build install test test-race vet fmt check release clean smoke help
 
 all: check build
 
-## build: compile for the host
+## build: compile for the host, leaving ./peerbeam in the working tree
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) $(CMD)
+
+## install: build into GOBIN so `peerbeam` runs from anywhere
+#
+# `make build` deliberately writes ./peerbeam into the working tree, which means it has to be run
+# as ./peerbeam. This target puts the same binary on the PATH instead. GOBIN wins if it is set,
+# otherwise Go installs into GOPATH/bin, so the destination is resolved the same way `go install`
+# resolves it rather than assumed.
+install:
+	@dest=$$(go env GOBIN); \
+	if [ -z "$$dest" ]; then dest=$$(go env GOPATH)/bin; fi; \
+	go install $(GOFLAGS) -ldflags '$(LDFLAGS)' $(CMD); \
+	echo "installed $(BINARY) to $$dest"; \
+	case ":$$PATH:" in \
+		*":$$dest:"*) echo "$$dest is on your PATH, so \`$(BINARY)\` works now" ;; \
+		*) echo; \
+		   echo "NOTE: $$dest is not on your PATH, so \`$(BINARY)\` will not be found yet."; \
+		   echo "add it with:"; \
+		   echo "  echo 'export PATH=\"\$$PATH:$$dest\"' >> ~/.zshrc && source ~/.zshrc" ;; \
+	esac
 
 ## test: run every test
 test:

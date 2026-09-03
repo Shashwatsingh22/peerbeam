@@ -48,7 +48,23 @@ the property tests. Nothing has to be installed on the machine that runs the bin
 ```sh
 git clone https://github.com/Shashwatsingh22/peerbeam.git
 cd peerbeam
-make build          # produces ./peerbeam for this machine
+make build          # produces ./peerbeam in the working tree
+```
+
+`make build` leaves the binary in the repo, so run it as `./peerbeam`. A bare `peerbeam` will not
+be found — the current directory is not on your PATH, and it should not be.
+
+To use the short form shown throughout this README, install it onto your PATH instead:
+
+```sh
+make install        # builds into GOBIN, or GOPATH/bin if GOBIN is unset
+```
+
+That prints where the binary landed and, if that directory is not on your PATH, the exact line to
+add. On a default Go setup with zsh:
+
+```sh
+echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc && source ~/.zshrc
 ```
 
 Cross-compiled release binaries for all five supported targets:
@@ -422,7 +438,8 @@ cannot lose your paired keys.
 ## Development
 
 ```sh
-make build       # compile for this machine
+make build       # compile for this machine, leaving ./peerbeam
+make install     # build onto your PATH, so a bare `peerbeam` works
 make test        # run every test
 make test-race   # run every test under the race detector
 make vet         # go vet for the host and all five release targets
