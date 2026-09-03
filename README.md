@@ -111,6 +111,16 @@ Without the shim, or without that grant, Bluetooth reports itself unavailable at
 node runs LAN-only. Neither is an error. See [`shim/macos/README.md`](shim/macos/README.md) for the
 details and for why it uses CoreBluetooth rather than an OS pairing.
 
+**What Bluetooth discovery does and does not show.** Peerbeam finds other machines *running
+Peerbeam*, not every Bluetooth device around you. A phone, headphones, or a speaker in your
+system Bluetooth panel will never appear, because they do not advertise the Peerbeam service — the
+scan filters for that one service, the way AirDrop shows only Apple devices. And two instances on
+the *same* machine will not find each other over Bluetooth: macOS does not deliver a radio's own
+advertisements back to another app on that host, so same-machine testing only ever discovers over
+LAN. Bluetooth discovery needs two separate machines, each with the shim built and its terminal
+granted access. Run with `PEERBEAM_BT_DEBUG=1` to watch the scan and confirm it is seeing the other
+machine's advertisement.
+
 ---
 
 ## Getting started

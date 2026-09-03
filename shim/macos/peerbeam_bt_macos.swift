@@ -633,6 +633,11 @@ extension BluetoothShim: CBCentralManagerDelegate {
         advertisementData: [String: Any], rssi RSSI: NSNumber
     ) {
         let identifier = peripheral.identifier.uuidString
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? "?"
+        // Logged under the debug flag so a user troubleshooting two machines can confirm the scan
+        // is actually seeing the other node's advertisement, which is the first thing to check
+        // when a peer is not appearing.
+        debugLog("discovered a peerbeam peripheral \"\(advertisedName)\" rssi \(RSSI)")
         discovered[identifier] = peripheral
 
         // The record has to be read over GATT, which needs a connection. Skip peers already
