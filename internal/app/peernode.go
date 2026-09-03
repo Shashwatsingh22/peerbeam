@@ -56,6 +56,10 @@ type Ports struct {
 	Events report.EventSink
 	// Display is where received text is presented (Req 5.3). Nil writes to standard output.
 	Display TextDisplay
+	// Presence publishes this node's presence and discovers peers on each medium (Req 3.1).
+	// Empty means no discovery runs, which is what the in-process tests want: they place peers
+	// in the registry directly rather than over a radio or a socket.
+	Presence []PresenceSource
 	// Clock is the time source. Nil means the real clock.
 	Clock clock.Clock
 }
@@ -383,6 +387,24 @@ func (n *PeerNode) Start(ctx context.Context) error {
 			if err := listener.Listen(n.ctx, n.onInbound); err != nil && n.ctx.Err() == nil {
 				n.reportFailure(&report.TransportUnavailable{
 					TransportName: listener.Name(),
+					Reason:        err.Error(),
+				}, n.config.DisplayName)
+			}
+		}()
+	}
+
+	// One Presence_Source per available medium (Req 3.1). Each publishes this node and feeds
+	// discovered peers into the registry until the root context is done. A source that returns
+	// an error stopped early; it is reported naming its medium, and the others keep running
+	// (Req 3.6).
+	for _, source := range n.ports.Presence {
+		src := source
+		n.wg.Add(1)
+		go func() {
+			defer n.wg.Done()
+			if err := src.Run(n.ctx); err != nil && n.ctx.Err() == nil {
+				n.reportFailure(&report.TransportUnavailable{
+					TransportName: src.TransportName(),
 					Reason:        err.Error(),
 				}, n.config.DisplayName)
 			}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/peerbeam/peerbeam/internal/core/clock"
+	"github.com/peerbeam/peerbeam/internal/core/discovery"
 	"github.com/peerbeam/peerbeam/internal/core/report"
 	"github.com/peerbeam/peerbeam/internal/core/transport"
 	"github.com/peerbeam/peerbeam/internal/core/trust"
@@ -56,10 +57,11 @@ func NewProductionNode(config Config) (*PeerNode, error) {
 	if config.DisplayName == "" {
 		config.DisplayName = defaultDisplayName()
 	}
-	transports, unavailable := availableTransports(config.DisplayName)
+
+	built := buildTransports(config)
 
 	node, err := NewPeerNode(config, Ports{
-		Transports: transports,
+		Transports: built.transports,
 		Clipboard:  clip.NewCommandClipboardPort(),
 		Share:      share.NewSharePort(),
 		KeyStore:   keyStore,
@@ -73,40 +75,138 @@ func NewProductionNode(config Config) (*PeerNode, error) {
 
 	// Carry forward what the platform could not offer, so the startup report names it (Req 12.3,
 	// 12.8).
-	node.unavailable = append(node.unavailable, unavailable...)
+	node.unavailable = append(node.unavailable, built.unavailable...)
+
+	// The port actually bound is published, not the one requested (Req 3.5): a config of 0 lets
+	// the OS choose, and a peer needs the chosen port to dial back.
+	if built.lanPort != 0 {
+		node.SetListenPort(built.lanPort)
+	}
+
+	// Presence sources are built last, because each needs the node's registry and its
+	// announcement, and the announcement needs the bound port set above (Req 3.1, 4.3).
+	node.ports.Presence = buildPresenceSources(node, built)
+
 	return node, nil
 }
 
-// availableTransports builds the Transport set for this host and reports what it could not.
-func availableTransports(displayName string) ([]transport.Transport, []report.Failure) {
-	var transports []transport.Transport
-	var unavailable []report.Failure
+// builtTransports is what buildTransports hands back: the enabled Transport set, the concrete
+// handles the Presence_Sources need, the bound LAN port, and what could not be offered.
+type builtTransports struct {
+	transports  []transport.Transport
+	unavailable []report.Failure
+
+	lan     *lan.LanTransport
+	lanPort int
+	bt      *bt.BtTransport
+}
+
+// buildTransports builds the Transport set for this host and reports what it could not.
+//
+// It keeps the concrete *lan.LanTransport and *bt.BtTransport rather than only their interface
+// values, because the Presence_Sources need methods that are not on transport.Transport:
+// Bluetooth advertising and scanning, and the beacon that wraps the LAN registry. Ranking, the
+// ladder, and switching still see only the interface.
+func buildTransports(config Config) builtTransports {
+	var built builtTransports
 
 	// LAN. Req 12.8 asks whether a reachable IP interface exists at all; the transport is added
 	// either way so its name appears in reports, and its availability is what the ranking
 	// filters on.
 	lanTransport := lan.NewLanTransport()
+	built.lan = lanTransport
 	if available, reason := lan.Availability(); !available {
-		unavailable = append(unavailable, report.Describe(&report.TransportUnavailable{
+		built.unavailable = append(built.unavailable, report.Describe(&report.TransportUnavailable{
 			TransportName: transport.NameLAN,
 			Reason:        reason,
-		}, displayName))
+		}, config.DisplayName))
 	} else {
-		transports = append(transports, lanTransport)
+		// Bind now, so the announcement can publish the real port before any peer tries to
+		// dial back. Listen binds lazily too and is idempotent, so binding here does not
+		// conflict with the accept loop Start opens. A bind failure is recorded like any other
+		// unavailability rather than aborting: the node can still discover and be discovered on
+		// Bluetooth.
+		if port, err := lanTransport.Bind(config.ListenPort); err != nil {
+			built.unavailable = append(built.unavailable, report.Describe(&report.TransportUnavailable{
+				TransportName: transport.NameLAN,
+				Reason:        err.Error(),
+			}, config.DisplayName))
+		} else {
+			built.lanPort = port
+			built.transports = append(built.transports, lanTransport)
+		}
 	}
 
 	// Bluetooth. A missing shim is the normal case on most hosts, so it is reported once at
 	// startup and the node carries on with LAN (Req 12.3).
 	bridge := bt.NewShimBluetoothBridge("")
 	btTransport := bt.NewBtTransport(bridge)
+	built.bt = btTransport
 	if reason := btTransport.UnavailableReason(); reason != "" {
-		unavailable = append(unavailable, report.Describe(&report.TransportUnavailable{
+		built.unavailable = append(built.unavailable, report.Describe(&report.TransportUnavailable{
 			TransportName: transport.NameBT,
 			Reason:        reason,
-		}, displayName))
+		}, config.DisplayName))
 	} else {
-		transports = append(transports, btTransport)
+		built.transports = append(built.transports, btTransport)
 	}
 
-	return transports, unavailable
+	return built
+}
+
+// buildPresenceSources builds one Presence_Source per available medium.
+//
+// A source is built only for a medium whose Transport was added to the enabled set, so a host with
+// no Bluetooth gets a LAN source alone and a host with neither gets none. The malformed and
+// observed callbacks feed the node's event log, matching how the beacon and the Bluetooth scan
+// already report on their own.
+func buildPresenceSources(node *PeerNode, built builtTransports) []PresenceSource {
+	var sources []PresenceSource
+	announcement := node.Announcement()
+
+	// A malformed record is reported through the single Describe mapping (Req 1.11). An observed
+	// peer is not logged as an event: the event log's four types are session and transfer
+	// lifecycle, and a discovered peer is neither - its visible effect is the peer appearing in
+	// the list. onObserved stays a hook rather than being dropped so a later "peer appeared"
+	// notice in the interactive layer has somewhere to attach.
+	onMalformed := func(reasons []string, address string) {
+		node.reportFailure(&report.AnnouncementMalformed{Reasons: reasons}, address)
+	}
+	var onObserved func(fingerprint, address string)
+
+	if built.lan != nil && transportEnabled(built.transports, transport.NameLAN) {
+		beacon := lan.NewBeacon(node.registry, announcement, node.clk, lan.BeaconEvents{
+			OnMalformed: onMalformed,
+			OnObserved:  onObserved,
+		})
+		sources = append(sources, newLanPresence(beacon))
+	}
+
+	if built.bt != nil && transportEnabled(built.transports, transport.NameBT) {
+		record, err := discovery.EncodeAnnouncement(announcement)
+		if err == nil {
+			sources = append(sources, newBtPresence(
+				built.bt, record, node.registry, node.Fingerprint(), onMalformed, onObserved))
+		} else {
+			// A local announcement that will not encode is this node's own problem, recorded
+			// so the user sees why Bluetooth discovery is not running rather than silently
+			// omitting the source.
+			node.unavailable = append(node.unavailable, report.Describe(&report.TransportUnavailable{
+				TransportName: transport.NameBT,
+				Reason:        "cannot encode this node's announcement: " + err.Error(),
+			}, node.config.DisplayName))
+		}
+	}
+
+	return sources
+}
+
+// transportEnabled reports whether a Transport with the given name made it into the enabled set.
+func transportEnabled(transports []transport.Transport, name string) bool {
+	for _, t := range transports {
+		if t.Name() == name {
+			return true
+		}
+	}
+	return false
 }

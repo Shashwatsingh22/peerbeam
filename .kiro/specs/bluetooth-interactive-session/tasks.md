@@ -66,24 +66,24 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
   - Correct the type comment, which documented a single-goroutine assumption that two Presence_Sources break
   - _Requirements: 4.6_
 
-- [ ] 4. Wire Presence_Sources into the node
-  - [ ] 4.1 Define `PresenceSource` and the two adapters
+- [x] 4. Wire Presence_Sources into the node
+  - [x] 4.1 Define `PresenceSource` and the two adapters
     - Create `internal/app/presence.go` with the `PresenceSource` interface (`Medium()`, `Run(ctx)`)
     - Implement `lanPresence` over `*lan.Beacon`, whose `Start` already blocks until the context is done
     - Implement `btPresence` over `*bt.BtTransport`, running an advertise ticker and `ScanInto`
     - Republish the Bluetooth advertisement on a ticker rather than once, to satisfy the republish interval and to recover a restarted shim
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
-  - [ ] 4.2 Add `Ports.Presence` and run the sources from `Start`
+  - [x] 4.2 Add `Ports.Presence` and run the sources from `Start`
     - Add the field, documented as optional so the in-process tests can keep placing peers directly
     - Start one goroutine per source under the root context, joined by the existing wait group
     - Report a source that fails after starting, naming the medium, and leave the others running
     - _Requirements: 3.1, 3.6_
-  - [ ] 4.3 Build the sources in `wiring.go`
+  - [x] 4.3 Build the sources in `wiring.go`
     - Construct them after the node exists, since each needs the registry and the announcement
     - Wire the malformed and observed callbacks to the existing event log path
     - Publish the port actually bound rather than the requested one
     - _Requirements: 3.5, 4.3, 4.4_
-  - [ ] 4.4* Property tests for presence composition
+  - [x] 4.4* Property tests for presence composition
     - Property 46: two sources, expiry, and reads compose without losing observations; one entry per fingerprint; every medium listed. Run under `-race`
     - Property 47: a malformed record produces identical reasons and an identical unchanged list on the Bluetooth and LAN paths
     - _Requirements: 4.3, 4.5, 4.6_
