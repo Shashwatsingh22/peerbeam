@@ -72,27 +72,10 @@ func (n *PeerNode) Connect(ctx context.Context, fingerprint string) (*EstablishR
 	}
 
 	// 2. The ladder over ranked candidates.
-	media := n.registry.MediaFor(fingerprint)
-	ranked := transport.RankFor(n.UsableTransports(), media)
-
-	ladder := transport.ConnectLadder(ctx, ranked, n.endpointLookup(fingerprint),
-		transport.ConnectAttemptTimeout)
-	switch {
-	case ladder.NoCandidate:
-		return nil, &report.NoCandidateTransport{}
-	case ladder.Connected == nil:
-		attempts := make([]report.TransportAttempt, 0, len(ladder.AllFailed))
-		for _, attempt := range ladder.AllFailed {
-			attempts = append(attempts, report.TransportAttempt{
-				TransportName: attempt.TransportName,
-				Reason:        attempt.Reason,
-			})
-		}
-		return nil, &report.LadderAllFailed{Attempts: attempts}
+	conn, chosen, dialFailure := n.dialRanked(ctx, fingerprint)
+	if dialFailure != nil {
+		return nil, dialFailure
 	}
-
-	conn := ladder.Connected.Connection
-	chosen := ladder.Connected.Transport
 
 	// 3. The handshake. Anything past here that fails closes the connection, so no half-open
 	// socket is left behind.
@@ -109,6 +92,62 @@ func (n *PeerNode) Connect(ctx context.Context, fingerprint string) (*EstablishR
 		return nil, admitFailure
 	}
 	return result, nil
+}
+
+// PairWith opens a connection to a not-yet-trusted Peer and runs the pairing exchange (Req 9.1).
+//
+// It is the first-contact counterpart to Connect: Connect refuses an unpaired Peer, and this is how
+// that Peer becomes paired. It dials the same ranked candidate ladder, then carries the pairing
+// exchange over the open connection. On success the Peer is a Trusted_Peer and the caller may call
+// Connect; the connection used for pairing is closed either way, because pairing and the session
+// handshake are separate exchanges and sharing one connection would tangle their state machines.
+//
+// The connection is dialed even though the Peer is untrusted, which is safe: no payload crosses it
+// but the two public keys, the code is derived locally and never sent, and a wrong key is caught as
+// a mismatch before anything is stored.
+func (n *PeerNode) PairWith(
+	ctx context.Context,
+	fingerprint string,
+	confirmer PairConfirmer,
+) (*pairResult, report.AppError) {
+	if failure := n.pairing.StoreFailure(); failure != nil {
+		return nil, &report.TrustStoreFailed{Reason: failure.Reason}
+	}
+
+	conn, _, failure := n.dialRanked(ctx, fingerprint)
+	if failure != nil {
+		return nil, failure
+	}
+	defer conn.Close()
+
+	return n.runPairing(ctx, conn, confirmer)
+}
+
+// dialRanked walks the ranked candidate ladder for a Peer and returns the first connection that
+// opened, or a report naming why none did. It is the shared dialing step of Connect and PairWith.
+func (n *PeerNode) dialRanked(
+	ctx context.Context,
+	fingerprint string,
+) (transport.TransportConnection, transport.Transport, report.AppError) {
+	media := n.registry.MediaFor(fingerprint)
+	ranked := transport.RankFor(n.UsableTransports(), media)
+
+	ladder := transport.ConnectLadder(ctx, ranked, n.endpointLookup(fingerprint),
+		transport.ConnectAttemptTimeout)
+	switch {
+	case ladder.NoCandidate:
+		return nil, nil, &report.NoCandidateTransport{}
+	case ladder.Connected == nil:
+		attempts := make([]report.TransportAttempt, 0, len(ladder.AllFailed))
+		for _, attempt := range ladder.AllFailed {
+			attempts = append(attempts, report.TransportAttempt{
+				TransportName: attempt.TransportName,
+				Reason:        attempt.Reason,
+			})
+		}
+		return nil, nil, &report.LadderAllFailed{Attempts: attempts}
+	}
+	return ladder.Connected.Connection, ladder.Connected.Transport, nil
 }
 
 // endpointLookup resolves a Peer's endpoint per Transport, so the ladder can dial a mixed candidate

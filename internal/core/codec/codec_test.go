@@ -28,7 +28,7 @@ var _ clock.Clock = (*manualClock)(nil)
 
 // knownTypeCodes is the closed set of recognised message type codes.
 func knownTypeCodes() []uint8 {
-	return []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+	return []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 }
 
 // drawFrame produces a well-formed Frame. Payload sizes straddle the interesting boundaries: empty,
@@ -582,7 +582,7 @@ func TestMessageTypeCodesAreStable(t *testing.T) {
 		1: MsgKeyExchangeInit, 2: MsgKeyExchangeResponse, 3: MsgText, 4: MsgClipboard,
 		5: MsgTransferOffer, 6: MsgTransferOfferReply, 7: MsgChunk, 8: MsgChunkAck,
 		9: MsgDeliveryAck, 10: MsgError, 11: MsgKeepalive, 12: MsgKeepaliveAck,
-		13: MsgTransferCancel,
+		13: MsgTransferCancel, 14: MsgPairingOffer, 15: MsgPairingDecision,
 	}
 	for code, kind := range want {
 		got, known := MessageTypeFromCode(code)
@@ -595,7 +595,7 @@ func TestMessageTypeCodesAreStable(t *testing.T) {
 	}
 
 	// 0 and everything past the defined set is unknown, which is what Req 8.8 relies on.
-	for _, code := range []uint8{0, 14, 15, 100, 255} {
+	for _, code := range []uint8{0, 16, 17, 100, 255} {
 		if _, known := MessageTypeFromCode(code); known {
 			t.Fatalf("code %d is recognised but should not be", code)
 		}

@@ -21,13 +21,20 @@ const (
 	MsgKeepalive           MessageType = 11
 	MsgKeepaliveAck        MessageType = 12
 	MsgTransferCancel      MessageType = 13
+	// MsgPairingOffer and MsgPairingDecision carry the pairing exchange (Req 9.1). They sit
+	// outside the Session's sequence space and, like the key exchange, are the only frames not
+	// encrypted, because they run before any key is established. An older peer that does not
+	// know these codes skips them per Req 8.8 and the connection then fails as untrusted, which
+	// is the correct outcome rather than a desynchronised stream.
+	MsgPairingOffer    MessageType = 14
+	MsgPairingDecision MessageType = 15
 )
 
 var knownTypes = map[uint8]MessageType{
 	1: MsgKeyExchangeInit, 2: MsgKeyExchangeResponse, 3: MsgText, 4: MsgClipboard,
 	5: MsgTransferOffer, 6: MsgTransferOfferReply, 7: MsgChunk, 8: MsgChunkAck,
 	9: MsgDeliveryAck, 10: MsgError, 11: MsgKeepalive, 12: MsgKeepaliveAck,
-	13: MsgTransferCancel,
+	13: MsgTransferCancel, 14: MsgPairingOffer, 15: MsgPairingDecision,
 }
 
 // MessageTypeFromCode reports the known type for a code, or ok == false (Req 8.8).
@@ -69,6 +76,10 @@ func (t MessageType) String() string {
 		return "KEEPALIVE_ACK"
 	case MsgTransferCancel:
 		return "TRANSFER_CANCEL"
+	case MsgPairingOffer:
+		return "PAIRING_OFFER"
+	case MsgPairingDecision:
+		return "PAIRING_DECISION"
 	default:
 		return fmt.Sprintf("MessageType(%d)", uint8(t))
 	}

@@ -101,22 +101,22 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
     - Confirm no shim process survives the node exiting
     - _Requirements: 5.3_
 
-- [ ] 6. Implement the Pairing_Exchange
-  - [ ] 6.1 Add the message types and payload codecs
+- [x] 6. Implement the Pairing_Exchange
+  - [x] 6.1 Add the message types and payload codecs
     - Add `PairingOffer` and `PairingDecision` codes to `internal/core/codec/messagetype.go`
     - Encode and decode the offer as version, length-prefixed public key, length-prefixed display name; the decision as a single byte where anything other than 0 or 1 is malformed
     - _Requirements: 9.1_
-  - [ ] 6.2 Implement the exchange over a connection
+  - [x] 6.2 Implement the exchange over a connection
     - Create `internal/app/pairing.go` driving the symmetric sequence: send an offer, receive one, derive the code, wait for the local decision, exchange decisions, complete on mutual confirmation
     - Derive the code locally from both public keys; never transmit it
     - Apply the 120-second code validity as the deadline for the whole exchange
     - Feed a key that contradicts a stored one into the existing key-mismatch path rather than a new report
     - Prompt the local user on an inbound offer instead of accepting automatically
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.9_
-  - [ ] 6.3 Refuse everything else before trust exists
+  - [x] 6.3 Refuse everything else before trust exists
     - Process only pairing and key exchange messages on a connection with no trust, leaving all Session and trust state untouched for anything else
     - _Requirements: 9.8_
-  - [ ] 6.4* Property tests for pairing
+  - [x] 6.4* Property tests for pairing
     - Property 48: both sides derive an equal code, and no encoded frame contains its digits
     - Property 49: over all four decision combinations, trust is recorded in exactly one
     - Property 50: a mismatched key reports a key mismatch, never an untrusted peer, and records no trust
