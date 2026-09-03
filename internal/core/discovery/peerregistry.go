@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/peerbeam/peerbeam/internal/core/clock"
@@ -39,13 +40,23 @@ const (
 // parameter is folded into the Clock so there is exactly one time source and a caller
 // cannot hand the registry a timestamp that disagrees with expiry.
 //
-// Not safe for concurrent use, matching FrameReader: the node drives discovery from a
-// single goroutine that owns the beacon reads, the Bluetooth scan channel, and the
-// expiry ticker.
+// Safe for concurrent use. This was originally documented as single-goroutine, on the
+// assumption that one goroutine would own the beacon reads, the Bluetooth scan channel,
+// and the expiry ticker. That assumption does not survive a node with two media: the LAN
+// beacon and the Bluetooth scan are independent sources that discover peers at the same
+// time, the expiry sweep runs on its own ticker, and the command layer reads the list
+// while all three are running. The lock lives here rather than in each caller because
+// this is the shared mutable state, and a lock per caller would mean four separate
+// mutexes protecting one map.
+//
+// The mutex is a leaf: nothing under it calls back out except Clock.Now, so there is no
+// lock ordering to respect.
 type PeerRegistry struct {
 	localVersion int
 	clock        clock.Clock
-	peers        map[string]VisiblePeer // keyed by fingerprint, or by manualKeyPrefix+host
+
+	mu    sync.Mutex
+	peers map[string]VisiblePeer // keyed by fingerprint, or by manualKeyPrefix+host
 }
 
 // NewPeerRegistry returns an empty registry. localVersion is the protocol version this
@@ -168,6 +179,11 @@ func (r *PeerRegistry) Observe(a Announcement, medium Medium, address string) Ob
 		return ObserveOutcome{Malformed: []string{"observed address is missing"}}
 	}
 
+	// Locked from here: the validation above is pure, and holding the lock across it would
+	// serialise every source's parsing behind one peer's malformed record.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	now := r.clock.Now()
 	existing, found := r.peers[a.Fingerprint]
 
@@ -248,6 +264,9 @@ func (r *PeerRegistry) AddManual(host string, port int) ManualOutcome {
 		return ManualOutcome{Rejected: rejected}
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	now := r.clock.Now()
 	canonical := canonicalHost(host)
 
@@ -299,6 +318,9 @@ func (r *PeerRegistry) AddManual(host string, port int) ManualOutcome {
 // list unbounded in practice, and "not seen for 30 seconds" means the same thing
 // however the entry got there.
 func (r *PeerRegistry) Expire(ttl time.Duration) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	now := r.clock.Now()
 	var removed []string
 	for key, peer := range r.peers {
@@ -316,6 +338,9 @@ func (r *PeerRegistry) Expire(ttl time.Duration) []string {
 // agree. Every entry is a deep copy, including its Endpoints map, so a caller cannot
 // mutate registry state through the returned slice.
 func (r *PeerRegistry) Visible() []VisiblePeer {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	keys := make([]string, 0, len(r.peers))
 	for key := range r.peers {
 		keys = append(keys, key)
@@ -337,6 +362,9 @@ func (r *PeerRegistry) MediaFor(fingerprint string) map[Medium]struct{} {
 	if fingerprint == "" {
 		return nil
 	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	peer, found := r.peers[fingerprint]
 	if !found {
 		return nil
@@ -349,7 +377,11 @@ func (r *PeerRegistry) MediaFor(fingerprint string) map[Medium]struct{} {
 }
 
 // Len is the current size of the visible Peer list, bounded by MaxVisiblePeers.
-func (r *PeerRegistry) Len() int { return len(r.peers) }
+func (r *PeerRegistry) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.peers)
+}
 
 // stale reports whether every medium of peer has gone quiet for at least ttl. An entry
 // with no endpoints cannot be reached on anything, so it counts as stale.
