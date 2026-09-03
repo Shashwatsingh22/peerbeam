@@ -161,8 +161,8 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
     - Property 55: no rendered line contains key material or any payload beyond the text the user sent or received
     - _Requirements: 6.7, 8.3, 10.2_
 
-- [ ] 8. Shim protocol property tests
-  - [ ] 8.1* Test the frame layer against a pipe
+- [x] 8. Shim protocol property tests
+  - [x] 8.1* Test the frame layer against a pipe
     - Property 42: frames cut at arbitrary offsets, including mid-header, read back identically and in order
     - Property 43: node-allocated and shim-allocated identifier spaces never collide
     - Property 44: a shim exit or oversized declaration fails every open stream and blocks none
