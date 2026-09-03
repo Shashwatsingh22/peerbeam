@@ -169,7 +169,7 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
     - Property 45: an oversized declared length is refused before the payload is read
     - _Requirements: 1.7_
 
-- [ ] 9. Cross-target and packaging checks
+- [x] 9. Cross-target and packaging checks
   - Confirm every release target of the parent spec still builds and vets with no shim present
   - Confirm a host with no shim reaches ready state, reports BT_Transport unavailable, and runs LAN-only
   - Confirm `make release` still produces one executable per target under the size ceiling
