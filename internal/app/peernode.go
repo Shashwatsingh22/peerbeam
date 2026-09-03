@@ -25,6 +25,15 @@ import (
 // ProtocolVersion is the version this build speaks, published in the announcement (Req 1.1).
 const ProtocolVersion = codec.ProtocolVersion
 
+// PeerDiscoveryWait is how long `peers` holds for a first observation on a freshly started node
+// before rendering (Req 5.5).
+//
+// It is a shade over the LAN republish interval, so a peer already announcing on the network is
+// seen within one publish cycle. It is deliberately shorter than the 15-second Bluetooth discovery
+// budget: a human running `peers` will not wait that long, and the interactive session keeps the
+// list live rather than taking a single snapshot, so the full budget is paid there instead.
+const PeerDiscoveryWait = 6 * time.Second
+
 // Config is everything a PeerNode needs that is not an interface. Zero values are filled in with
 // defaults, so a caller only states what it wants to change.
 type Config struct {
@@ -314,6 +323,50 @@ func (n *PeerNode) Announcement() discovery.Announcement {
 
 // Registry is the visible Peer list (Req 1.2).
 func (n *PeerNode) Registry() *discovery.PeerRegistry { return n.registry }
+
+// HasPresence reports whether any Presence_Source is wired, which is whether discovery can populate
+// the list at all. A node with none - the in-process tests, or a host with no usable medium - has
+// nothing to wait for.
+func (n *PeerNode) HasPresence() bool { return len(n.ports.Presence) > 0 }
+
+// WaitForFirstPeer blocks until at least one peer is visible, the deadline passes, or ctx is
+// cancelled (Req 5.5).
+//
+// A freshly started node has an empty list until a presence source hears something - up to a
+// republish interval on LAN and up to the 15-second discovery budget on Bluetooth. This lets a
+// command hold briefly for that first observation rather than rendering an empty list as if it
+// were the final answer. It returns whether a peer became visible, so a caller can distinguish
+// "still empty after waiting" from "found something".
+//
+// It polls rather than subscribing: the registry has no change signal, adding one for a
+// human-paced wait would be machinery out of proportion to the need, and a short poll interval is
+// imperceptible next to the seconds this waits.
+//
+// The ceiling is measured against real wall-clock time, not the node's injected Clock. The Clock
+// exists to make protocol timeouts testable by advancing it by hand; this is a human-facing wait
+// for a socket to hear something, so it must elapse on its own. Bounding it by the injected Clock
+// would loop forever under a manual clock that no goroutine advances.
+func (n *PeerNode) WaitForFirstPeer(ctx context.Context, within time.Duration) bool {
+	if n.registry.Len() > 0 {
+		return true
+	}
+	deadline := time.NewTimer(within)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return n.registry.Len() > 0
+		case <-deadline.C:
+			return n.registry.Len() > 0
+		case <-ticker.C:
+			if n.registry.Len() > 0 {
+				return true
+			}
+		}
+	}
+}
 
 // Pairing is the trust and pairing service (Req 9).
 func (n *PeerNode) Pairing() *trust.PairingService { return n.pairing }

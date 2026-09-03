@@ -88,15 +88,15 @@ Language and toolchain: Go 1.23 for the node, Swift for the macOS shim, built wi
     - Property 47: a malformed record produces identical reasons and an identical unchanged list on the Bluetooth and LAN paths
     - _Requirements: 4.3, 4.5, 4.6_
 
-- [ ] 5. Start the node behind the commands that need one
-  - [ ] 5.1 Add a starting opener and classify the commands
+- [x] 5. Start the node behind the commands that need one
+  - [x] 5.1 Add a starting opener and classify the commands
     - Add an opener that starts the node and returns a stop function alongside the existing constructing one
     - Move `peers`, `peers add`, `pair`, `connect`, `send`, `clip *`, and `status --watch` onto it; leave `trust list`, `trust remove`, `log tail`, and plain `status` on the constructing one
     - _Requirements: 5.1, 5.2, 5.4_
-  - [ ] 5.2 Wait for discovery before rendering a peer list
+  - [x] 5.2 Wait for discovery before rendering a peer list
     - Allow a bounded interval for the first observation and say that discovery is in progress, rather than printing an empty table immediately
     - _Requirements: 5.5, 6.3_
-  - [ ] 5.3 Route interruption through the single stop path
+  - [x] 5.3 Route interruption through the single stop path
     - Cancel the root context on signal, which closes the shim's standard input and stops every loop through `PeerNode.Stop`
     - Confirm no shim process survives the node exiting
     - _Requirements: 5.3_

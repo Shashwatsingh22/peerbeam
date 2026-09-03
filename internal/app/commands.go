@@ -93,7 +93,17 @@ Every capability is a command; there is no graphical interface.`),
 	root.PersistentFlags().IntVar(&options.ListenPort, "port", 0,
 		"TCP port to listen on (0 lets the operating system choose)")
 
-	open := func() (*PeerNode, error) {
+	// A lifecycle threads through every command: build the node, optionally start its
+	// background loops, and register the matching stop so the process joins every goroutine
+	// before it exits. It is created per command run rather than once, so `--help` builds
+	// nothing and a command that never opens a node starts nothing.
+	//
+	// Two openers rather than one. A command that needs discovery, a Session, or inbound
+	// connections gets a started node; a command that needs only local state - the trust
+	// store, the event log, a one-shot status - gets an unstarted one. Starting a node opens
+	// listeners and launches presence loops, so paying that cost for `trust list` would be
+	// waste and, worse, would make a read-only command bind a port.
+	build := func(cmd *cobra.Command) (*PeerNode, error) {
 		return newNode(Config{
 			DisplayName: options.DisplayName,
 			StateDir:    options.StateDir,
@@ -101,25 +111,66 @@ Every capability is a command; there is no graphical interface.`),
 		})
 	}
 
+	// liveOpener starts the node and arranges for it to stop when the command finishes. Stop is
+	// the single join point, so registering it on the command as a PostRun hook is what
+	// guarantees no loop and no BT_Shim outlives the command (Req 5.2, 5.3).
+	liveOpener := func(cmd *cobra.Command) (*PeerNode, error) {
+		node, err := build(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if err := node.Start(cmd.Context()); err != nil {
+			node.Stop()
+			return nil, err
+		}
+		// PostRunE runs after RunE regardless of its outcome, and the deferred stop in main's
+		// signal path is the backstop for a hard interrupt.
+		cmd.PostRunE = chainPostRun(cmd.PostRunE, func(*cobra.Command, []string) error {
+			node.Stop()
+			return nil
+		})
+		return node, nil
+	}
+
+	// localOpener builds a node without starting it, for commands that touch only local state.
+	localOpener := func(cmd *cobra.Command) (*PeerNode, error) { return build(cmd) }
+
 	root.AddCommand(
-		newPeersCommand(open),
-		newPairCommand(open),
-		newTrustCommand(open),
-		newConnectCommand(open),
-		newDisconnectCommand(open),
-		newPinCommand(open),
-		newSendCommand(open),
-		newClipCommand(open),
-		newFileCommand(open),
-		newStatusCommand(open),
-		newLogCommand(open),
-		newAirDropCommand(open),
+		newPeersCommand(liveOpener),
+		newPairCommand(liveOpener),
+		newTrustCommand(localOpener),
+		newConnectCommand(liveOpener),
+		newDisconnectCommand(liveOpener),
+		newPinCommand(liveOpener),
+		newSendCommand(liveOpener),
+		newClipCommand(liveOpener),
+		newFileCommand(liveOpener),
+		newStatusCommand(localOpener),
+		newLogCommand(localOpener),
+		newAirDropCommand(localOpener),
 	)
 	return root
 }
 
+// chainPostRun composes two cobra PostRunE hooks, so registering a stop does not clobber a hook a
+// command already set.
+func chainPostRun(existing, added func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		var firstErr error
+		if existing != nil {
+			firstErr = existing(cmd, args)
+		}
+		if err := added(cmd, args); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		return firstErr
+	}
+}
+
 // nodeOpener builds a node on demand.
-type nodeOpener func() (*PeerNode, error)
+// nodeOpener builds the node a command needs, given the running command so it can reach the
+// command context and register a stop hook. A live opener starts the node; a local one does not.
+type nodeOpener func(cmd *cobra.Command) (*PeerNode, error)
 
 // newPeersCommand covers Req 1.2, 1.6, 1.7, and 1.10.
 func newPeersCommand(open nodeOpener) *cobra.Command {
@@ -128,11 +179,24 @@ func newPeersCommand(open nodeOpener) *cobra.Command {
 		Short: "List the peers currently visible on any medium",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
-			return renderPeerTable(cmd.OutOrStdout(), node)
+			// The node has just started, so the list is empty for the first few seconds
+			// (Req 5.5). Rendering it immediately is what makes the tool look broken: an
+			// empty table reads as "nobody is here" when the truth is "still looking". Give
+			// discovery a bounded interval, saying so, and render whatever it found - which
+			// may still be empty on a network with no peers, and that is a real answer.
+			out := cmd.OutOrStdout()
+			// Only wait if a presence source is actually running: with no source, nothing can
+			// ever populate the list, so waiting would stall for the full interval and then
+			// print the same empty table. A manual `peers add` still shows up either way.
+			if node.HasPresence() && node.Registry().Len() == 0 {
+				fmt.Fprintln(out, "discovering peers...")
+				node.WaitForFirstPeer(cmd.Context(), PeerDiscoveryWait)
+			}
+			return renderPeerTable(out, node)
 		},
 	}
 
@@ -145,7 +209,7 @@ is filtered. The entry is marked as manually supplied and is updated in place if
 that peer later appears on its own.`),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -194,7 +258,7 @@ The code is never sent over the network: both machines derive it independently,
 so an attacker who controls the network cannot make the two agree.`),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -276,7 +340,7 @@ func newTrustCommand(open nodeOpener) *cobra.Command {
 		Short: "List every trusted peer",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -307,7 +371,7 @@ func newTrustCommand(open nodeOpener) *cobra.Command {
 		Short: "Stop trusting a peer and close any session with it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -346,7 +410,7 @@ func newConnectCommand(open nodeOpener) *cobra.Command {
 		Short: "Open a session with a trusted peer over the fastest available transport",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -386,7 +450,7 @@ func newDisconnectCommand(open nodeOpener) *cobra.Command {
 		Short: "Close the session with a peer, leaving every other session untouched",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -415,7 +479,7 @@ by the ranking, and if the pinned transport becomes unavailable the session goes
 to a disconnected state rather than switching.`),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -454,7 +518,7 @@ func newSendCommand(open nodeOpener) *cobra.Command {
 		Short: "Send a line of text to one peer or to a group",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -520,7 +584,7 @@ func newClipCommand(open nodeOpener) *cobra.Command {
 		Short: "Send this machine's clipboard text to one peer or a group",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -576,7 +640,7 @@ func newClipCommand(open nodeOpener) *cobra.Command {
 		Short: "Apply received clipboard content automatically, or hold it for confirmation",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -600,7 +664,7 @@ within a second, except when the content is what that peer just sent or what was
 last applied from it, which would otherwise bounce between the two machines.`),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -620,7 +684,7 @@ last applied from it, which would otherwise bounce between the two machines.`),
 		Short: "Decide on clipboard content held for confirmation",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -692,7 +756,7 @@ func newFileCommand(open nodeOpener) *cobra.Command {
 		Short: "Send a file, verified end to end with a SHA-256 digest",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -741,7 +805,7 @@ not acknowledged. If the transport changed in the meantime, the remaining bytes
 are re-sliced at the new transport's chunk size.`),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := open(); err != nil {
+			if _, err := open(cmd); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "resuming transfer %s\n", args[0])
@@ -754,7 +818,7 @@ are re-sliced at the new transport's chunk size.`),
 		Short: "Stop a transfer and tell the receiver to release the partial file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := open(); err != nil {
+			if _, err := open(cmd); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(),
@@ -776,7 +840,7 @@ func newStatusCommand(open nodeOpener) *cobra.Command {
 		Short: "Show each session's peer, transport, goodput, and round-trip time",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -811,7 +875,7 @@ completion, and session rejection. It never contains message payloads, clipboard
 content, file content, or key material.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
@@ -849,7 +913,7 @@ choose the recipient, so a person picks it.
 Every active session is left exactly as it was.`),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			node, err := open()
+			node, err := open(cmd)
 			if err != nil {
 				return err
 			}
