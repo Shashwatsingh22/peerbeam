@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>net.peerbeam.bt-shim</string>
+	<key>CFBundleName</key>
+	<string>peerbeam-bt-shim</string>
+	<key>CFBundleExecutable</key>
+	<string>peerbeam-bt-shim</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<!-- Required since macOS 11: without this key TCC cannot show a Bluetooth prompt at all and
+	     silently denies the request, which shows up as CoreBluetooth reporting .unauthorized. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Peerbeam finds your other machines and moves text and files between them over Bluetooth.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Peerbeam advertises this machine so your other machines can find it over Bluetooth.</string>
+</dict>
+</plist>

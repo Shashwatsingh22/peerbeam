@@ -25,7 +25,7 @@ TARGETS := \
 	linux/amd64 \
 	linux/arm64
 
-.PHONY: all build install test test-race vet fmt check release clean smoke help
+.PHONY: all build install shim test test-race vet fmt check release clean smoke help
 
 all: check build
 
@@ -50,6 +50,18 @@ install:
 		   echo "NOTE: $$dest is not on your PATH, so \`$(BINARY)\` will not be found yet."; \
 		   echo "add it with:"; \
 		   echo "  echo 'export PATH=\"\$$PATH:$$dest\"' >> ~/.zshrc && source ~/.zshrc" ;; \
+	esac
+
+## shim: build and install the native Bluetooth helper for this OS
+#
+# Without this, BT_Transport reports itself unavailable and the node runs LAN-only. The helper is a
+# separate executable rather than linked in (Option B in the design) so it can be rebuilt and
+# debugged on its own; see the note at the bottom of internal/platform/bt/shimbridge.go.
+shim:
+	@case "$$(uname -s)" in \
+		Darwin) ./shim/macos/build.sh ;; \
+		Linux)  echo "the linux shim is not implemented yet; see shim/linux/README.md" >&2; exit 1 ;; \
+		*)      echo "no shim build for $$(uname -s); see shim/" >&2; exit 1 ;; \
 	esac
 
 ## test: run every test
