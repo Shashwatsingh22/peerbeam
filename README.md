@@ -19,9 +19,10 @@ peerbeam send <fingerprint> --text "hi" # then just use it
 
 The protocol core is complete and heavily tested. Some of the top-level plumbing is not.
 
-**Working end to end:** peer discovery, the encrypted session handshake, session admission and the
-8-session limit, text messaging with acknowledgement and ordering, clipboard apply and echo
-suppression, transport ranking and failover, the trust store, status reporting, and the event log.
+**Working as libraries, with tests:** peer discovery, the encrypted session handshake, session
+admission and the 8-session limit, text messaging with acknowledgement and ordering, clipboard
+apply and echo suppression, transport ranking and failover, the trust store, status reporting, and
+the event log.
 An end-to-end suite runs two nodes in one process over a loopback transport and moves real text
 and file chunks through the production code path, including rebinding and eight concurrent
 sessions. Those tests seed both trust stores directly, which is precisely the gap below.
@@ -33,9 +34,12 @@ sessions. Those tests seed both trust stores directly, which is precisely the ga
 | The pairing wire exchange | `peerbeam pair` cannot complete a first pairing between two machines. The trust model, code derivation, and confirmation logic are all done and tested; the exchange that carries the peer's public key over a connection is not. |
 | The transfer sender loop | `file send` reports a real chunk plan and stops. `file resume` and `file cancel` print confirmations without driving a transfer. The chunk planner, progress tracking, resend ceiling, and integrity check are all implemented and tested. |
 | The Bluetooth native shim | `shim/macos`, `shim/windows`, and `shim/linux` contain no native code, so Bluetooth reports itself unavailable on every real host and nodes run LAN-only. This is a supported, reported startup state — not a crash. |
+| The CLI never starts the node | Every command builds a node, queries it, and exits without calling `PeerNode.Start`, so no listener accepts inbound connections and nothing ages out of the peer list. |
+| Discovery is not wired into the node | `internal/platform/lan/beacon.go` implements and tests announcement publishing and receiving, but `internal/app` never constructs a beacon and `Ports` has no field for one. `peerbeam peers` therefore always prints `(no peers visible)`. |
 
-So today Peerbeam is a working LAN peer-to-peer node with a complete protocol implementation and a
-CLI whose discovery, session, text, clipboard, trust, and status commands do real work.
+So today Peerbeam is a tested protocol implementation with a CLI shell over it. The command surface
+is complete and its arguments, validation, and failure reporting are real, but the two gaps above
+mean a single binary does not yet find or accept peers on a live network.
 
 ---
 
