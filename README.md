@@ -108,8 +108,11 @@ from whatever launched it:
 > System Settings → Privacy & Security → Bluetooth → enable your terminal
 
 Without the shim, or without that grant, Bluetooth reports itself unavailable at startup and the
-node runs LAN-only. Neither is an error. See [`shim/macos/README.md`](shim/macos/README.md) for the
-details and for why it uses CoreBluetooth rather than an OS pairing.
+node runs LAN-only. Neither is an error. If a machine says the Bluetooth helper is not installed,
+run `make shim` on **that** machine — the message is about the helper executable, not the radio, so
+a machine that uses Bluetooth for other things can still show it until the helper is built. See
+[`shim/macos/README.md`](shim/macos/README.md) for the details and for why it uses CoreBluetooth
+rather than an OS pairing.
 
 **What Bluetooth discovery does and does not show.** Peerbeam finds other machines *running
 Peerbeam*, not every Bluetooth device around you. A phone, headphones, or a speaker in your

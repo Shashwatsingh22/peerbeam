@@ -128,6 +128,29 @@ func (b *ShimBluetoothBridge) Available() bool {
 	return info.Mode().Perm()&0o111 != 0
 }
 
+// UnavailableReason explains why this bridge is not available, naming the real cause rather than a
+// generic "no interface" message. What makes Bluetooth unavailable here is almost always a missing
+// or non-executable shim, not an absent radio - Available never opens the radio - so the message
+// says which and points at the fix. An empty string means the bridge is available.
+func (b *ShimBluetoothBridge) UnavailableReason() string {
+	if b.Available() {
+		return ""
+	}
+	if b.path == "" {
+		return "no bluetooth helper is configured"
+	}
+	info, err := os.Stat(b.path)
+	switch {
+	case err != nil:
+		return fmt.Sprintf(
+			"the bluetooth helper is not installed at %s; build it with `make shim`", b.path)
+	case info.IsDir():
+		return fmt.Sprintf("%s is a directory, not the bluetooth helper; rebuild it with `make shim`", b.path)
+	default:
+		return fmt.Sprintf("the bluetooth helper at %s is not executable; run `make shim` to reinstall it", b.path)
+	}
+}
+
 // MaxWriteBytes is the RFCOMM write limit.
 func (b *ShimBluetoothBridge) MaxWriteBytes() int { return RFCOMMMaxWriteBytes }
 

@@ -66,6 +66,14 @@ func (t *BtTransport) UnavailableReason() string {
 	if t.bridge.Available() {
 		return ""
 	}
+	// A bridge that can explain itself is preferred, so the reason names the real cause - a
+	// missing shim, most often - rather than the generic fallback that reads as if the radio
+	// were absent when it is not.
+	if reporter, ok := t.bridge.(interface{ UnavailableReason() string }); ok {
+		if reason := reporter.UnavailableReason(); reason != "" {
+			return reason
+		}
+	}
 	if unavailable, ok := t.bridge.(*UnavailableBridge); ok && unavailable.Reason != "" {
 		return unavailable.Reason
 	}
