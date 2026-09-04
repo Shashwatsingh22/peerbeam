@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -853,9 +854,23 @@ func (n *PeerNode) StatusLines() []report.StatusLine {
 	return out
 }
 
-// defaultDisplayName is the host name, truncated to the 64-character limit of Req 1.1.
+// defaultDisplayName is the host name, tidied and truncated to the 64-character limit of Req 1.1.
+//
+// It is only a fallback: a user who wants a friendly name passes --name. But the raw hostname is
+// often an mDNS name like "Shashwats-Laptop.local" or a corporate asset tag, so the ".local"
+// suffix is stripped to leave the readable stem. Nothing else is invented - a machine whose
+// hostname is an asset tag still shows that tag, because that is genuinely its name and there is
+// nothing better to fall back to.
 func defaultDisplayName() string {
 	name := hostName()
+	if name == "" {
+		return "peerbeam-node"
+	}
+	// Drop a trailing ".local" (and any other single DNS suffix) so the name reads as the machine
+	// stem rather than its mDNS form.
+	if dot := strings.IndexByte(name, '.'); dot > 0 {
+		name = name[:dot]
+	}
 	if name == "" {
 		return "peerbeam-node"
 	}
